@@ -1,32 +1,27 @@
 # main_mercury.py
-import os
-import xarray as xr
-from datetime import datetime
 
-# Import modules for file management, analysis, and result display
+import xarray as xr
+import os
+import sys
 from file_io_manager import find_geoschem_nc4_files, open_geoschem_datasets
 from mercury_analysis_2 import quantify_total_deposition, quantify_hg2_to_ssa_transfer
-from showing_results import display_mercury_results, offer_and_execute_plotting
+from showing_results import display_mercury_results
+from plotting import plot_variable_global # Import the plotting function
 
-def run_mercury_analysis_tool():
-    """
-    Orchestrates the GEOS-Chem mercury analysis workflow.
-    This didactic script guides the user through file loading,
-    analysis selection, result display, and optional plotting.
-    """
-    print("\n" + "="*80)
-    print("      GEOS-Chem Mercury Analysis Tool (Didactic Version)".center(80))
-    print("="*80)
+def main():
+    print("================================================================================")
+    print("      --- GEOS-Chem Mercury Deposition & Transfer Analysis ---      ")
+    print("================================================================================")
     print("Welcome to the GEOS-Chem Mercury Analysis Tool. This program will guide you through:")
-    print("1. Automatically identifying and loading relevant GEOS-Chem NetCDF files.")
-    print("2. Performing specific mercury-related calculations.")
+    print("1. Specifying a folder to automatically load GEOS-Chem NetCDF files.")
+    print("2. Performing a combined mercury-related calculation (Deposition and Transfer).")
     print("3. Displaying numerical results.")
-    print("4. Optionally visualizing results through plots.\n")
+    print("4. Generating global maps of averaged rates (new!).\n") # Update welcome message
 
     # --- Step 1: User Input for Data Folder ---
     print("--- Step 1: Specify Data Folder ---")
     print("Please provide the path to the folder containing your GEOS-Chem .nc4 output files.")
-    print("Example: '/path/to/my/geoschem_output_data/' or 'data/' (for a local folder)")
+    print("Example: '/path/to/my/geoschem_output_data/' or 'data/' (for a local subfolder)")
 
     folder_path = input("Enter the folder path: ").strip()
 
@@ -41,13 +36,11 @@ def run_mercury_analysis_tool():
     print("The tool will now automatically scan the specified folder and attempt to open")
     print("NetCDF files recognized as GEOS-Chem output using xarray.")
 
-    # Find and open datasets using the file_io_manager
-    # Note: open_geoschem_datasets groups by description, so we get a dict of datasets.
     opened_datasets = open_geoschem_datasets(folder_path)
 
     if not opened_datasets:
-        print("\nNo GEOS-Chem .nc4 datasets were successfully loaded. Please ensure your files")
-        print("are present and follow the 'GEOSChem.<description>.<date>.nc4' naming convention.")
+        print("\nNo GEOS-Chem .nc4 datasets were successfully loaded from the specified folder.")
+        print("Please ensure your files are present and follow the 'GEOSChem.<description>.<date>.nc4' naming convention.")
         print("Exiting application.")
         return
 
@@ -56,118 +49,98 @@ def run_mercury_analysis_tool():
         print(f"  - '{desc}' (Variables: {list(ds.data_vars.keys())})")
     print("-" * 80)
 
-    # --- Step 3: Mercury Analysis Menu ---
-    print("\n--- Step 3: Select Mercury Analysis ---")
-    print("This tool focuses on specific mercury-related calculations.")
-    print("Select an option below to proceed with the analysis.")
+    # Initialize results variables to None
+    total_dry_deposition_kg_s = None
+    total_wet_deposition_kg_s = None
+    hg2_to_ssa_transfer_rate_kg_s = None
 
-    menu_options = {
-        "1": "Quantify Total Wet and Dry Deposition of Mercury",
-        "2": "Quantify Gaseous Hg(II) to Sea Salt Aerosol (SSA) Transfer Rate",
-        "0": "Exit Program"
-    }
+    # Retrieve all potentially needed datasets upfront
+    ds_mercurychem = opened_datasets.get('MercuryChem')
+    ds_statemet = opened_datasets.get('StateMet')
+    ds_drydep = opened_datasets.get('DryDep')      # Get DryDep dataset
+    ds_wetconv = opened_datasets.get('WetLossConv') # Get WetLossConv dataset
+    ds_wetls = opened_datasets.get('WetLossLS')     # Get WetLossLS dataset
 
-    while True:
-        print("\nMercury Analysis Options:")
-        for key, value in menu_options.items():
-            print(f"  [{key}] {value}")
+    # --- Step 3: Run the combined analysis directly ---
+    print("\n--- Running: Combined Wet/Dry Deposition AND Sea Salt Transfer Analysis ---")
 
-        choice = input("Enter your choice (e.g., 1 or 2): ").strip()
+    # Run deposition if datasets are available
+    required_dep_ds = ['MercuryChem', 'StateMet', 'DryDep', 'WetLossConv', 'WetLossLS']
+    if not all(opened_datasets.get(ds_name) is not None for ds_name in required_dep_ds):
+        print(f"\nWARNING: Not all required datasets for total deposition analysis were found ({', '.join(required_dep_ds)}).")
+        print("Skipping Total Wet and Dry Deposition calculation.")
+        total_dry_deposition_kg_s = None
+        total_wet_deposition_kg_s = None
+    else:
+        total_dry_deposition_kg_s, total_wet_deposition_kg_s = quantify_total_deposition(
+            ds_mercurychem, ds_statemet, ds_drydep, ds_wetconv, ds_wetls
+        )
 
-        wet_dep_result = None
-        dry_dep_result = None
-        hg2_ssa_transfer_result = None
-        analysis_performed = False
+    # Run transfer if datasets are available
+    required_transfer_ds = ['MercuryChem', 'StateMet']
+    if not all(opened_datasets.get(ds_name) is not None for ds_name in required_transfer_ds):
+        print(f"\nWARNING: Required datasets for Hg(II) to SSA transfer analysis not fully loaded ({', '.join(required_transfer_ds)}).")
+        print("Skipping Hg(II) Gas to Sea Salt Aerosol Transfer calculation.")
+        hg2_to_ssa_transfer_rate_kg_s = None
+    else:
+        hg2_to_ssa_transfer_rate_kg_s = quantify_hg2_to_ssa_transfer(ds_mercurychem, ds_statemet)
+            
+    # Display combined results
+    display_mercury_results(
+        total_dry_deposition_kg_s,
+        total_wet_deposition_kg_s,
+        hg2_to_ssa_transfer_rate_kg_s
+    )
 
-        if choice == '1':
-            print(f"\nInitiating: {menu_options['1']}...")
-            # We need to pass the specific datasets required by quantify_total_deposition
-            # These are identified by their 'description' keys from open_geoschem_datasets
-            # Ensure the correct datasets are passed.
-            ds_wetconv = opened_datasets.get('WetLossConv')
-            ds_wetls = opened_datasets.get('WetLossLS')
-            ds_drydep = opened_datasets.get('DryDep')
+    # --- Step 4: Generate Global Plots of Averaged Rates ---
+    print("\n--- Step 4: Generating Global Maps of Averaged Rates ---")
 
-            if ds_wetconv is None:
-                print("Error: 'WetLossConv' dataset not found for total deposition calculation.")
-                print("Please ensure you have files like 'GEOSChem.WetLossConv....nc4'.")
-                continue
-            if ds_wetls is None:
-                print("Error: 'WetLossLS' dataset not found for total deposition calculation.")
-                print("Please ensure you have files like 'GEOSChem.WetLossLS....nc4'.")
-                continue
-            if ds_drydep is None:
-                print("Error: 'DryDep' dataset not found for total deposition calculation.")
-                print("Please ensure you have files like 'GEOSChem.DryDep....nc4'.")
-                continue
+    # Helper function to prepare data for plotting
+    def prepare_for_global_plot(data_array: xr.DataArray, process_name: str) -> xr.DataArray | None:
+        if data_array is None:
+            print(f"  - Skipping plot for {process_name}: Data not available.")
+            return None
 
-            # Call the analysis function, passing the opened xarray datasets
-            wet_dep_result, dry_dep_result = quantify_total_deposition(
-                ds_wetconv, ds_wetls, ds_drydep
-            )
-            analysis_performed = True
-            break # Exit menu loop after analysis
-        elif choice == '2':
-            print(f"\nInitiating: {menu_options['2']}...")
-            # We need to pass the specific datasets required by quantify_hg2_to_ssa_transfer
-            ds_mercurychem = opened_datasets.get('MercuryChem')
-            ds_statemet = opened_datasets.get('StateMet')
+        # Average over time
+        averaged_da = data_array.mean(dim='time', keep_attrs=True) # Keep attributes for units/long_name
 
-            if ds_mercurychem is None:
-                print("Error: 'MercuryChem' dataset not found for Hg(II) to SSA transfer calculation.")
-                print("Please ensure you have files like 'GEOSChem.MercuryChem....nc4'.")
-                continue
-            if ds_statemet is None:
-                print("Error: 'StateMet' dataset not found for Hg(II) to SSA transfer calculation.")
-                print("Please ensure you have files like 'GEOSChem.StateMet....nc4'.")
-                continue
+        # If there's a 'lev' dimension, sum over it (to get total column rate for 2D map)
+        if 'lev' in averaged_da.dims:
+            print(f"  - Summing '{process_name}' over 'lev' dimension for plotting.")
+            averaged_da = averaged_da.sum(dim='lev', keep_attrs=True)
 
-            # Call the analysis function
-            hg2_ssa_transfer_result = quantify_hg2_to_ssa_transfer(
-                ds_mercurychem, ds_statemet
-            )
-            analysis_performed = True
-            break # Exit menu loop after analysis
-        elif choice == '0':
-            print("Exiting the GEOS-Chem Mercury Analysis Tool. Goodbye!")
-            analysis_performed = False # Indicate no analysis was performed
-            break
-        else:
-            print("Invalid choice. Please enter a number corresponding to an option.")
+        print(f"  - Prepared '{process_name}' data for plotting. Shape: {averaged_da.shape}")
+        return averaged_da
 
-    # --- Step 4: Display Results (Textual Summary) ---
-    if analysis_performed:
-        print("\n--- Step 4: Displaying Analysis Results ---")
-        if wet_dep_result is not None or dry_dep_result is not None:
-            display_mercury_results(wet_dep_result=wet_dep_result, dry_dep_result=dry_dep_result)
-        elif hg2_ssa_transfer_result is not None:
-            display_mercury_results(hg2_ssa_transfer_result=hg2_ssa_transfer_result)
-        else:
-            print("No results to display. Analysis may have failed or produced no valid data.")
+    # Prepare and plot Dry Deposition
+    avg_dry_dep_for_plot = prepare_for_global_plot(total_dry_deposition_kg_s, "Dry Deposition")
+    if avg_dry_dep_for_plot is not None:
+        plot_variable_global(avg_dry_dep_for_plot, var_name="Average Dry Deposition Rate")
 
-        # --- Step 5: Offer Plotting ---
-        print("\n--- Step 5: Plotting Results (Optional) ---")
-        plot_choice = input("Do you want to plot the results? (yes/no): ").strip().lower()
-        if plot_choice == 'yes':
-            print("Initiating plotting process...")
-            # Pass the results of the analysis to the plotting function
-            offer_and_execute_plotting(
-                wet_dep_result=wet_dep_result,
-                dry_dep_result=dry_dep_result,
-                hg2_ssa_transfer_result=hg2_ssa_transfer_result
-            )
-        else:
-            print("Skipping plotting. Analysis complete.")
+    # Prepare and plot Wet Deposition
+    avg_wet_dep_for_plot = prepare_for_global_plot(total_wet_deposition_kg_s, "Wet Deposition")
+    if avg_wet_dep_for_plot is not None:
+        plot_variable_global(avg_wet_dep_for_plot, var_name="Average Wet Deposition Rate")
+
+    # Prepare and plot Hg(II) to SSA Transfer
+    avg_hg2_ssa_for_plot = prepare_for_global_plot(hg2_to_ssa_transfer_rate_kg_s, "Hg(II) Gas to Sea Salt Aerosol Transfer")
+    if avg_hg2_ssa_for_plot is not None:
+        plot_variable_global(avg_hg2_ssa_for_plot, var_name="Average Hg(II) to Sea Salt Aerosol Transfer Rate")
+
+    print("\n--- Global Map Generation Complete ---")
+    print("-" * 80)
+
 
     # --- Final Cleanup: Close all opened datasets ---
     print("\n--- Final Step: Cleaning Up Resources ---")
     print("Closing all opened xarray datasets to free up memory.")
     for desc, ds in opened_datasets.items():
-        if ds is not None: # Ensure the dataset was actually opened
+        if ds is not None:
             ds.close()
             print(f"  - Dataset '{desc}' closed.")
-    print("Resource cleanup complete. Thank you for using the tool!")
+    print("Resource cleanup complete.")
+    print("\nExiting the application. Thank you for using the tool!")
 
 
 if __name__ == "__main__":
-    run_mercury_analysis_tool()
+    main()
