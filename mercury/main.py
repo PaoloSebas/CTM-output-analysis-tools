@@ -25,10 +25,10 @@ def display_main_menu():
     print("\n--- GEOS-Chem Data Analysis Tool ---")
     print("1. Load & Process GEOS-Chem Data Folder")
     print("2. Perform Mercury Analysis")
-    print("3. Perform Time-Series Analysis (Future)")
+    # print("3. Perform Time-Series Analysis (Future)")
     print("4. Plotting a selected variable")
-    print("5. Conduct Spatial Aggregations (Future)")
-    print("6. Compare GEOS-Chem Runs (Future)")
+    # print("5. Conduct Spatial Aggregations (Future)")
+    # print("6. Compare GEOS-Chem Runs (Future)")
     print("7. Exit")
     print("------------------------------------")
 
@@ -353,14 +353,14 @@ def main():
             current_opened_datasets, current_files_info, current_folder_path = process_data_folder()
         elif choice == '2':
             perform_mercury_analysis(current_opened_datasets, current_files_info, current_folder_path)
-        elif choice == '3':
-            handle_future_feature("Perform Time-Series Analysis")
+        # elif choice == '3':
+        #     handle_future_feature("Perform Time-Series Analysis")
         elif choice == '4': # NEW CHOICE: Plotting
             plot_selected_variable(current_opened_datasets)
-        elif choice == '5':
-            handle_future_feature("Conduct Spatial Aggregations")
-        elif choice == '6':
-            handle_future_feature("Compare GEOS-Chem Runs")
+        # elif choice == '5':
+        #     handle_future_feature("Conduct Spatial Aggregations")
+        # elif choice == '6':
+        #     handle_future_feature("Compare GEOS-Chem Runs")
         elif choice == '7': # Updated exit number
             print("Exiting the application. Goodbye!")
             # Ensure datasets are closed upon exit
