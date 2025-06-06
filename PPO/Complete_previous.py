@@ -53,10 +53,9 @@ Created on Fri Apr 18 22:08:27 2025
 #
 # 6. Plotting (Difference Maps):
 #   -  Calculate the absolute difference in HO2 concentration (ppb) at Level 0
-#      between Scenario 2 and Scenario 1, and Scenario 3 and Scenario 1 for each month.
+#       between Scenario 2 and Scenario 1, and Scenario 3 and Scenario 1 for each month.
 #   -  Create global maps of these differences for each month.
 #
-
 # --- Part 2: Import Libraries ---
 import xarray as xr
 import numpy as np
@@ -69,34 +68,26 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import traceback  # Import traceback for detailed error logging
 
-# --- Part 3: Interactive User Menu for Configuration ---
+# --- Part 3: Configuration ---
+# Define base directories for different scenarios
+base_directory_s1 = 'D:/PPO/NEW_SET_2025/SCENARIO_1/'
+base_directory_s2 = 'D:/PPO/NEW_SET_2025/SCENARIO_2/'
+base_directory_s3 = 'D:/PPO/NEW_SET_2025/SCENARIO_3/'
 
-def get_user_input(prompt, default=None):
-    value = input(f"{prompt} [{default if default else ''}]: ")
-    return value.strip() or default
+# Define base filenames for species concentration files for each scenario
+species_conc_base_filename_s1 = 'SCENARIO1_GEOSChem.SpeciesConc.'
+species_conc_base_filename_s2 = 'SCENARIO2_GEOSChem.SpeciesConc.'
+species_conc_base_filename_s3 = 'SCENARIO3_GEOSChem.SpeciesConc.'
 
-print("=== CTM Output Analysis Tool Configuration ===")
+# Define base filenames for state met files for each scenario
+state_met_base_filename_s1 = 'SCENARIO1_GEOSChem.StateMet.'
+state_met_base_filename_s2 = 'SCENARIO2_GEOSChem.StateMet.'
+state_met_base_filename_s3 = 'SCENARIO3_GEOSChem.StateMet.'
 
-# Directories
-base_directory_s1 = get_user_input("Enter base directory for Scenario 1")
-base_directory_s2 = get_user_input("Enter base directory for Scenario 2")
-base_directory_s3 = get_user_input("Enter base directory for Scenario 3")
+# Define the start and end dates for the analysis
+start_date_str = '20190801'
+end_date_str = '20200801'
 
-# Species Concentration Filenames
-species_conc_base_filename_s1 = get_user_input("Enter base filename for SpeciesConc (Scenario 1)")
-species_conc_base_filename_s2 = get_user_input("Enter base filename for SpeciesConc (Scenario 2)")
-species_conc_base_filename_s3 = get_user_input("Enter base filename for SpeciesConc (Scenario 3)")
-
-# State Met Filenames
-state_met_base_filename_s1 = get_user_input("Enter base filename for StateMet (Scenario 1)")
-state_met_base_filename_s2 = get_user_input("Enter base filename for StateMet (Scenario 2)")
-state_met_base_filename_s3 = get_user_input("Enter base filename for StateMet (Scenario 3)")
-
-# Dates
-start_date_str = get_user_input("Enter start date (YYYYMMDD)", "20190801")
-end_date_str = get_user_input("Enter end date (YYYYMMDD)", "20200801")
-
-# --- Part 3 (continued): Configuration ---
 # Define the vertical levels to consider
 vertical_levels = [0, 15]
 level_names = {0: 'Level 0 (Surface)', 15: 'Level 15'}
@@ -139,7 +130,7 @@ PPM_TO_PPB = 1e3
 def generate_monthly_dates(start_str, end_str):
     # Convert start and end date strings to datetime.date objects
     start = date(int(start_str[:4]), int(start_str[4:6]), int(start_str[6:]))
-    end = date(int(end_str[:4]), int(end_str[4:6]), int(end_str[6:]))
+    end = date(int(end_date_str[:4]), int(end_date_str[4:6]), int(end_date_str[6:]))
     dates = []
     current = start
     # Loop through months from start to end date
@@ -380,6 +371,288 @@ if not error_occurred and latitude is not None and longitude is not None:  # onl
 else:
     print("Skipping difference maps plot due to errors during data processing or missing lat/lon.")
 
-# The rest of the script remains unchanged (Parts 8–10: Percentage burden variation plot,
-# vertical profiles, latitude-pressure cross section, etc.)
-# ... (rest of the original code follows here, unchanged)
+# --- Part 8: Plotting Percentage Burden Variation at Level 0 ---
+# --- Create a bar plot of the percentage variation in burden at Level 0 ---
+print("\n--- Part 8: Plotting Percentage Burden Variation at Level 0 ---")
+
+if not error_occurred:
+    level_0 = 0
+    scenario_1_burden_level0 = np.array(ho2_burden_monthly_kg['Scenario 1'][level_0])
+    scenario_2_burden_level0 = np.array(ho2_burden_monthly_kg['Scenario 2'][level_0])
+    scenario_3_burden_level0 = np.array(ho2_burden_monthly_kg['Scenario 3'][level_0])
+
+    # Convert monthly date strings to datetime objects for x-axis labels
+    date_objects = [date(int(d[:4]), int(d[4:6]), 1) for d in monthly_dates]
+    month_labels = [d.strftime('%b-%Y') for d in date_objects]
+    x = np.arange(len(month_labels))  # the label locations
+    width = 0.35  # the width of the bars
+
+    fig, ax = plt.subplots(figsize=(16, 8))
+    rects1 = ax.bar(x - width / 2,
+                    (scenario_2_burden_level0 - scenario_1_burden_level0) / scenario_1_burden_level0 * 100,
+                    width, label='Scenario 2 vs Scenario 1')
+    rects2 = ax.bar(x + width / 2,
+                    (scenario_3_burden_level0 - scenario_1_burden_level0) / scenario_1_burden_level0 * 100,
+                    width, label='Scenario 3 vs Scenario 1')
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel('Percentage Variation (%)')
+    ax.set_xlabel('Month')
+    ax.set_title('Percentage Variation of HO$_2$ Burden at Level 0 Relative to Scenario 1')
+    ax.set_xticks(x)
+    ax.set_xticklabels(month_labels, rotation=45, ha='right')
+    ax.legend()
+    ax.grid(axis='y', linestyle='--')
+
+    fig.tight_layout()
+    plt.savefig('ho2_burden_percentage_variation_level0.png')
+    plt.close()
+
+else:
+    print("Skipping percentage burden variation plot due to errors during data processing.")
+    
+
+# --- Part 9: Calculate and Plot Overlapped Vertical Profiles for All Scenarios and Cities (Monthly) ---
+print("\n--- Part 9: Calculate and Plot Overlapped Vertical Profiles for All Scenarios and Cities (Monthly) ---")
+
+# Configuration for vertical profiles
+profile_locations = {
+    "Sydney": (-33.87, 151.21),
+    "New York City": (40.71, -74.01),
+    "Tokyo": (35.68, 139.76),
+}
+city_names = list(profile_locations.keys())
+scenario_names_list = list(scenario_directories.keys())
+scenario_colors = {'Scenario 1': 'blue', 'Scenario 2': 'red', 'Scenario 3': 'green'}
+line_styles = {'Sydney': '-', 'New York City': '--', 'Tokyo': ':'}
+
+# Constants
+AVOGADRO = 6.02214076e23  # molecules/mol
+M_AIR = 28.97e-3          # kg/mol (molar mass of air)
+M3_TO_CM3 = 1e6           # Conversion factor from m^3 to cm^3
+
+# Get unique months from the monthly_dates list
+unique_months = sorted(list(set([d[:6] for d in monthly_dates])))
+
+# Loop through each unique month
+for month_str in unique_months:
+    plt.figure(figsize=(12, 10))
+    all_profiles_plotted_this_month = False
+    handles = []
+    labels = []
+
+    # Loop through each scenario
+    for scenario_name, base_dir in scenario_directories.items():
+        species_conc_base = species_conc_base_filenames[scenario_name]
+        state_met_base = state_met_base_filenames[scenario_name]
+
+        # Construct the date string for the current month (using the first day)
+        current_month_dates = [d for d in monthly_dates if d[:6] == month_str]
+        if not current_month_dates:
+            print(f"Warning: No data found for {scenario_name} in {month_str}.")
+            continue
+        date_str = current_month_dates[0] # Use the first day of the month
+
+        try:
+            species_conc_filepath = os.path.join(base_dir, f'{species_conc_base}{date_str}_0000z.nc4')
+            state_met_filepath = os.path.join(base_dir, f'{state_met_base}{date_str}_0000z.nc4')
+
+            if not os.path.exists(species_conc_filepath) or not os.path.exists(state_met_filepath):
+                print(f"Warning: Skipping profiles for {scenario_name} - {month_str} due to missing files.")
+                continue
+
+            with xr.open_dataset(species_conc_filepath) as ds_species, \
+                 xr.open_dataset(state_met_filepath) as ds_state_met:
+
+                ho2_vvmr = ds_species['SpeciesConcVV_HO2'].isel(time=0)
+                air_density = ds_state_met['Met_AIRDEN'].isel(time=0)
+                pressure = ds_state_met['Met_PMID'].isel(time=0)
+                lat = ds_species['lat']
+                lon = ds_species['lon']
+                lev = ds_species['lev']
+
+                # Loop through the specified profile locations
+                for city, (profile_lat, profile_lon) in profile_locations.items():
+                    # Find the closest grid cell
+                    lat_diff = np.abs(lat - profile_lat)
+                    lon_diff = np.abs(lon - profile_lon)
+                    lat_idx = lat_diff.argmin()
+                    lon_idx = lon_diff.argmin()
+
+                    ho2_vvmr_profile = ho2_vvmr[:, lat_idx, lon_idx].values
+                    air_density_profile = air_density[:, lat_idx, lon_idx].values
+                    pressure_profile = pressure[:, lat_idx, lon_idx].values
+
+                    # Calculate HO2 number density (molecules/cm³)
+                    ho2_num_density = ho2_vvmr_profile * (air_density_profile / M_AIR) * AVOGADRO / M3_TO_CM3
+
+                    # Plot the profile for the current city and scenario
+                    label = f'{city} - {scenario_name}'
+                    line, = plt.plot(ho2_num_density, pressure_profile, color=scenario_colors[scenario_name], linestyle=line_styles[city], label=label)
+                    handles.append(line)
+                    labels.append(label)
+                    all_profiles_plotted_this_month = True
+
+        except Exception as e:
+            print(f"Error processing overlapped vertical profiles for {scenario_name} - {month_str}: {e}")
+            traceback.print_exc()
+
+    # Add labels and title for the monthly plot
+    if all_profiles_plotted_this_month:
+        try:
+            month_date = date.fromisoformat(f'{month_str[:4]}-{month_str[4:]}-01')
+            plt.xlabel('HO$_2$ Concentration (molecules/cm³)')
+            plt.ylabel('Pressure (hPa)')
+            plt.title(f'Vertical Profiles of HO$_2$ - {month_date.strftime("%B %Y")}\n(All Scenarios and Cities)')
+            plt.gca().invert_yaxis()  # Invert y-axis for pressure (higher at bottom)
+            plt.grid(True)
+
+            # Sort handles and labels by city name
+            sorted_indices = sorted(range(len(labels)), key=lambda k: labels[k].split(' - ')[0])
+            sorted_handles = [handles[i] for i in sorted_indices]
+            sorted_labels = [labels[i] for i in sorted_indices]
+
+            plt.legend(sorted_handles, sorted_labels, loc='best')  # Add the ordered legend
+            plt.tight_layout()
+
+            # Save the combined monthly plot
+            filename = f'ho2_vertical_profiles_all_scenarios_ordered_legend_{month_str}.png'
+            plt.savefig(filename)
+            print(f"Combined vertical profiles for {month_date.strftime('%B %Y')} (all scenarios, ordered legend) saved successfully as {filename}")
+        except ValueError as ve:
+            print(f"Error formatting date for title or filename for month {month_str}: {ve}")
+        except Exception as e:
+            print(f"Error saving combined vertical profiles for {month_date.strftime('%B %Y')} (all scenarios, ordered legend): {e}")
+            traceback.print_exc()
+    else:
+        print(f"No vertical profile data to plot for {month_str}.")
+    plt.close()
+
+print("\n--- End of Part 9: Overlapped Vertical Profile Calculation for All Scenarios and Cities (Monthly) with Ordered Legend ---")
+
+# --- Part 10: Latitude-Pressure Cross-Section at Sydney's Longitude (Monthly) with Fixed Y-axis (Corrected Level Interpretation) ---
+print("\n--- Part 10: Latitude-Pressure Cross-Section at Sydney's Longitude (Monthly) with Fixed Y-axis (Corrected Level Interpretation) ---")
+
+# Configuration for cross-section
+sydney_longitude = 151.21
+selected_scenario = 'Scenario 1'  # Choose the scenario for the cross-section
+top_level_index = 0
+bottom_level_index = 71
+
+# Constants
+AVOGADRO = 6.02214076e23  # molecules/mol
+M_AIR = 28.97e-3          # kg/mol (molar mass of air)
+M3_TO_CM3 = 1e6           # Conversion factor from m^3 to cm^3
+
+# Get unique months from the monthly_dates list
+unique_months = sorted(list(set([d[:6] for d in monthly_dates])))
+
+# Determine pressure at level 0 and 71 from the first available state met file
+pressure_at_top = np.nan
+pressure_at_bottom = np.nan
+
+first_month = unique_months[0]
+base_dir = scenario_directories.get(selected_scenario)
+state_met_base = state_met_base_filenames.get(selected_scenario)
+
+if base_dir and state_met_base:
+    current_month_dates = [d for d in monthly_dates if d[:6] == first_month]
+    if current_month_dates:
+        date_str = current_month_dates[0]
+        state_met_filepath = os.path.join(base_dir, f'{state_met_base}{date_str}_0000z.nc4')
+        if os.path.exists(state_met_filepath):
+            try:
+                with xr.open_dataset(state_met_filepath) as ds_state_met:
+                    pressure = ds_state_met['Met_PMID']
+                    lon = ds_state_met['lon']
+                    lon_diff = np.abs(lon - sydney_longitude)
+                    lon_idx = lon_diff.argmin()
+
+                    if pressure.shape[1] > top_level_index:
+                        pressure_at_top = pressure[0, top_level_index, :, lon_idx].values.max()
+                    if pressure.shape[1] > bottom_level_index:
+                        pressure_at_bottom = pressure[0, bottom_level_index, :, lon_idx].values.min()
+
+                print(f"Pressure at level {bottom_level_index}: {pressure_at_bottom:.2f} hPa")
+                print(f"Pressure at level {top_level_index}: {pressure_at_top:.2f} hPa")
+
+            except Exception as e:
+                print(f"Error reading pressure data to determine fixed y-axis limits: {e}")
+
+# Loop through each unique month for plotting
+for month_str in unique_months:
+    plt.figure(figsize=(10, 8))
+    cross_section_plotted_this_month = False
+
+    base_dir = scenario_directories.get(selected_scenario)
+    species_conc_base = species_conc_base_filenames.get(selected_scenario)
+    state_met_base = state_met_base_filenames.get(selected_scenario)
+
+    if not base_dir or not species_conc_base or not state_met_base:
+        print(f"Warning: Scenario '{selected_scenario}' not found in configuration for cross-section.")
+        continue
+
+    # Construct the date string for the current month (using the first day)
+    current_month_dates = [d for d in monthly_dates if d[:6] == month_str]
+    if not current_month_dates:
+        print(f"Warning: No data found for {selected_scenario} in {month_str}.")
+        continue
+    date_str = current_month_dates[0] # Use the first day of the month
+
+    try:
+        species_conc_filepath = os.path.join(base_dir, f'{species_conc_base}{date_str}_0000z.nc4')
+        state_met_filepath = os.path.join(base_dir, f'{state_met_base}{date_str}_0000z.nc4')
+
+        if not os.path.exists(species_conc_filepath) or not os.path.exists(state_met_filepath):
+            print(f"Warning: Skipping cross-section for {selected_scenario} - {month_str} due to missing files.")
+            continue
+
+        with xr.open_dataset(species_conc_filepath) as ds_species, \
+             xr.open_dataset(state_met_filepath) as ds_state_met:
+
+            ho2_vvmr = ds_species['SpeciesConcVV_HO2'].isel(time=0)
+            air_density = ds_state_met['Met_AIRDEN'].isel(time=0)
+            pressure = ds_state_met['Met_PMID'].isel(time=0)
+            lat = ds_species['lat']
+            lon = ds_species['lon']
+            lev = ds_species['lev']
+
+            # Find the longitude index closest to Sydney's longitude
+            lon_diff = np.abs(lon - sydney_longitude)
+            lon_idx = lon_diff.argmin()
+
+            ho2_vvmr_slice = ho2_vvmr[:, :, lon_idx].values  # (lev, lat)
+            air_density_slice = air_density[:, :, lon_idx].values  # (lev, lat)
+            pressure_slice = pressure[:, :, lon_idx].values  # (lev, lat)
+            latitude = lat.values
+
+            # Calculate HO2 number density (molecules/cm³)
+            ho2_num_density = ho2_vvmr_slice * (air_density_slice / M_AIR) * AVOGADRO / M3_TO_CM3
+
+            # Create the plot
+            lat_mesh, p_mesh = np.meshgrid(latitude, pressure_slice[:, 0]) # Use pressure values for y-axis
+
+            contour = plt.contourf(lat_mesh, p_mesh, ho2_num_density, cmap='viridis', levels=np.linspace(np.nanmin(ho2_num_density), np.nanmax(ho2_num_density), 20))
+            cbar = plt.colorbar(contour, label='HO$_2$ Concentration (molecules/cm³)')
+            plt.xlabel('Latitude (°N)')
+            plt.ylabel('Pressure (hPa)')
+            month_date = date.fromisoformat(f'{month_str[:4]}-{month_str[4:]}-01')
+            plt.title(f'HO$_2$ Cross-Section at Longitude {lon.values[lon_idx]:.2f}°E (near Sydney)\n{month_date.strftime("%B %Y")} - {selected_scenario}')
+            plt.gca().invert_yaxis()  # Invert y-axis for pressure (higher at bottom)
+            if np.isfinite(pressure_at_bottom) and np.isfinite(pressure_at_top):
+                plt.ylim(pressure_at_bottom, pressure_at_top) # Set fixed y-axis limits (higher pressure at bottom)
+            plt.tight_layout()
+            cross_section_plotted_this_month = True
+
+            # Save the plot
+            filename = f'ho2_cross_section_sydney_lon_fixed_yaxis_levels_corrected_{selected_scenario.replace(" ", "_")}_{month_str}.png'
+            plt.savefig(filename)
+            print(f"Cross-section (fixed y-axis levels 71-0) for {month_date.strftime('%B %Y')} ({selected_scenario}) saved as {filename}")
+
+    except Exception as e:
+        print(f"Error processing cross-section (fixed y-axis levels 71-0) for {selected_scenario} - {month_str}: {e}")
+        traceback.print_exc()
+    finally:
+        plt.close()
+
+print("\n--- End of Part 10: Latitude-Pressure Cross-Section at Sydney's Longitude (Monthly) with Fixed Y-axis (Corrected Level Interpretation) ---")
