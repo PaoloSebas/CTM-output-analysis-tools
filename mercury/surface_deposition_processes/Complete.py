@@ -116,20 +116,104 @@ conv = (MW_Hg/NA) * ug_g * 1e6 * s_in_yr
 print(conv)
 
 ##########################################
-### 
+### Plotting purposes
 ##########################################
 
+# Defining maps' colors and line style 
 
+colors = {
+    'NP': 'black', 'WM': 'blue', 'WL': 'lightblue',
+    'OM': 'green', 'OL': 'lightgreen', 'SSA0': 'red', 'SSAC': 'yellow', 'OX': 'orange'
+}
+
+linestyles = {
+    'NP': '--', 'WM': '-', 'WL': '-',
+    'OM': '-', 'OL': '-', 'SSA0': '-', 'SSAC': '-', 'OX': '-'
+}
+
+legend_map = {
+    'NP': 'No Perturbations',
+    'WM': 'More_Wind',
+    'WL': 'Less_Wind',
+    'OM': 'More_Ocean',
+    'OL': 'Less_Ocean',
+    'SSA0': 'Sea Salt Aerosols (Zero)',
+    'SSAC': 'Sea Salt Aerosols (Constant)',
+    'OX': 'Oxidants Br,BrO,OH +20%'
+}
+
+month_names = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
 
 
 
 ##########################################
-### 
+### Chemical species lists 
 ##########################################
 
+hg2_species_list_sp = [
+    'SpeciesConcVV_HgCl2',
+    'SpeciesConcVV_HgOHOH',
+    'SpeciesConcVV_HgOHBrO',
+    'SpeciesConcVV_HgOHClO',
+    'SpeciesConcVV_HgOHHO2',
+    'SpeciesConcVV_HgOHNO2',
+    'SpeciesConcVV_HgClOH',
+    'SpeciesConcVV_HgClBr',
+    'SpeciesConcVV_HgClBrO',
+    'SpeciesConcVV_HgClClO',
+    'SpeciesConcVV_HgClHO2',
+    'SpeciesConcVV_HgClNO2',
+    'SpeciesConcVV_HgBr2',
+    'SpeciesConcVV_HgBrOH',
+    'SpeciesConcVV_HgBrClO',
+    'SpeciesConcVV_HgBrBrO',
+    'SpeciesConcVV_HgBrHO2',
+    'SpeciesConcVV_HgBrNO2'
+]
 
+hg2_species_list_DD = [    ##<<< They are 18 species
+    'DryDep_HgCl2',
+    'DryDep_HgOHOH',
+    'DryDep_HgOHBrO',
+    'DryDep_HgOHClO',
+    'DryDep_HgOHHO2',
+    'DryDep_HgOHNO2',
+    'DryDep_HgClOH',
+    'DryDep_HgClBr',
+    'DryDep_HgClBrO',
+    'DryDep_HgClClO',
+    'DryDep_HgClHO2',
+    'DryDep_HgClNO2',
+    'DryDep_HgBr2',
+    'DryDep_HgBrOH',
+    'DryDep_HgBrClO',
+    'DryDep_HgBrBrO',
+    'DryDep_HgBrHO2',
+    'DryDep_HgBrNO2'
+]
 
+hg2_species_list_DD_island = [    ##<<< They are 18 species
+    'DryDepIsland_HgCl2',
+    'DryDepIsland_HgOHOH',
+    'DryDepIsland_HgOHBrO',
+    'DryDepIsland_HgOHClO',
+    'DryDepIsland_HgOHHO2',
+    'DryDepIsland_HgOHNO2',
+    'DryDepIsland_HgClOH',
+    'DryDepIsland_HgClBr',
+    'DryDepIsland_HgClBrO',
+    'DryDepIsland_HgClClO',
+    'DryDepIsland_HgClHO2',
+    'DryDepIsland_HgClNO2',
+    'DryDepIsland_HgBr2',
+    'DryDepIsland_HgBrOH',
+    'DryDepIsland_HgBrClO',
+    'DryDepIsland_HgBrBrO',
+    'DryDepIsland_HgBrHO2',
+    'DryDepIsland_HgBrNO2'
+]
 
+## There are 18 from Hg(2+), 2 from Hg(P) ad 1 from Hg(0) => 21 variables for the total one 
 
 ##########################################
 ### 
