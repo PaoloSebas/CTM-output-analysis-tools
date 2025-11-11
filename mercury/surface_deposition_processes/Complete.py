@@ -934,29 +934,198 @@ for t_key, data_array in monthly_std_by_type_DD_Hg0_I.items():
 print("DD_I Hg0 - Unit conversion completed.")
 
 
+##########################################
+### PLOTTING STANDARD things 
+##########################################
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# --- 1. Nuove Variabili di Selezione ---
+# Coordinate dell'Isola Macquarie
+target_lat = -54.5
+target_lon = 158.95
+
+# La chiave specifica che hai scelto
+selected_key = 'OX' 
+
+# Una lista dei tuoi dizionari (come definiti in precedenza)
+list_of_data_dicts = [
+    monthly_means_by_type_DD_micro_Hg0,
+    monthly_means_by_type_DD_micro_Hg2,
+    monthly_means_by_type_DD_micro_HgP,
+    #monthly_means_by_type_DD_micro
+]
+
+# Etichette per le serie nel grafico
+series_labels = ['DD_Hg0', 'DD_Hg2', 'DD_HgP']#, 'DD_Total']
+
+# Dizionario per contenere le serie temporali finali (month-only)
+monthly_data_series = {}
+
+# --- 2. Processo di Estrazione al Punto Specifico ---
+for data_dict, label in zip(list_of_data_dicts, series_labels):
+    if selected_key in data_dict:
+        da = data_dict[selected_key]
+        
+        # **NUOVO PASSO CRUCIALE:** # Seleziona il punto sulla mappa più vicino alle coordinate fornite.
+        # Questo riduce la DataArray da (month, lat, lon) a (month).
+        point_series = da.sel(
+            lat=target_lat, 
+            lon=target_lon, 
+            method='nearest' # Trova il punto della griglia più vicino
+        )
+        
+        # 3. Converti la DataArray risultante in pandas.Series e memorizza
+        # .to_series() è necessario per inserire i dati nel DataFrame di pandas
+        monthly_data_series[label] = point_series.to_series()
+    else:
+        print(f"Attenzione: La chiave '{selected_key}' non è stata trovata nel dizionario per {label}")
+
+# 4. Combina tutte le serie in un unico DataFrame
+df_plot = pd.DataFrame(monthly_data_series)
+
+# Opzionale: Rinomina l'indice 'month' per un'etichetta migliore nel plot
+df_plot.index.name = "Mese"
+
+
+# 5. Crea il Grafico ad Area Stacked
+plt.figure(figsize=(12, 6))
+
+ax = df_plot.plot.area(
+    stacked=True, # Area Plot Stacked (somma delle aree)
+    ax=plt.gca(),
+    title=f"Monthly Hg Dry Deposition (2018-2022 period) @ MQI - Perturbation key: {selected_key} (Lat: {target_lat}, Lon: {target_lon})"
+)
+
+# 6. Personalizzazione e Visualizzazione
+ax.set_xlabel("Month")
+ax.set_ylabel("Hg dry deposition (ug * m-2 * year-1)")
+ax.legend(title="Perturbation keys", loc='upper right')
+ax.grid(axis='y', linestyle='--', alpha=0.6)
+
+# Imposta etichette sull'asse X per i 12 mesi
+
+ax.set_xticks(range(1, 13))
+ax.set_xticklabels(month_names)
+
+plt.tight_layout()
+plt.show()
+
 
 
 
 ##########################################
-### 
+### Plotting on the island 
 ##########################################
 
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# --- 1. Nuove Variabili di Selezione ---
+# Coordinate dell'Isola Macquarie
+target_lat = -54.5
+target_lon = 158.95
+
+# La chiave specifica che hai scelto
+selected_key = 'WM' 
+
+# Una lista dei tuoi dizionari (come definiti in precedenza)
+list_of_data_dicts = [
+    monthly_means_by_type_DD_micro_Hg0_I,
+    monthly_means_by_type_DD_micro_Hg2_I,
+    monthly_means_by_type_DD_micro_HgP_I,
+    #monthly_means_by_type_DD_micro
+]
+
+# Etichette per le serie nel grafico
+series_labels = ['DD_Hg0_I', 'DD_Hg2_I', 'DD_HgP_I']#, 'DD_Total']
+
+# Dizionario per contenere le serie temporali finali (month-only)
+monthly_data_series = {}
+
+# --- 2. Processo di Estrazione al Punto Specifico ---
+for data_dict, label in zip(list_of_data_dicts, series_labels):
+    if selected_key in data_dict:
+        da = data_dict[selected_key]
+        
+        # **NUOVO PASSO CRUCIALE:** # Seleziona il punto sulla mappa più vicino alle coordinate fornite.
+        # Questo riduce la DataArray da (month, lat, lon) a (month).
+        point_series = da.sel(
+            lat=target_lat, 
+            lon=target_lon, 
+            method='nearest' # Trova il punto della griglia più vicino
+        )
+        
+        # 3. Converti la DataArray risultante in pandas.Series e memorizza
+        # .to_series() è necessario per inserire i dati nel DataFrame di pandas
+        monthly_data_series[label] = point_series.to_series()
+    else:
+        print(f"Attenzione: La chiave '{selected_key}' non è stata trovata nel dizionario per {label}")
+
+# 4. Combina tutte le serie in un unico DataFrame
+df_plot = pd.DataFrame(monthly_data_series)
+
+# Opzionale: Rinomina l'indice 'month' per un'etichetta migliore nel plot
+df_plot.index.name = "Mese"
+
+
+# 5. Crea il Grafico ad Area Stacked
+plt.figure(figsize=(12, 6))
+
+ax = df_plot.plot.area(
+    stacked=True, # Area Plot Stacked (somma delle aree)
+    ax=plt.gca(),
+    title=f"Monthly Hg Dry Deposition (only 2018) @ MQI - Perturbation key: {selected_key} (Lat: {target_lat}, Lon: {target_lon})"
+)
+
+# 6. Personalizzazione e Visualizzazione
+ax.set_xlabel("Month")
+ax.set_ylabel("Hg dry deposition (ug * m-2 * year-1)")
+ax.legend(title="Perturbation keys", loc='upper right')
+ax.grid(axis='y', linestyle='--', alpha=0.6)
+
+# Imposta etichette sull'asse X per i 12 mesi
+
+ax.set_xticks(range(1, 13))
+ax.set_xticklabels(month_names)
+
+plt.tight_layout()
+plt.show()
 
 
 
 
 ##########################################
-### 
+### Hg2 to SSA 
 ##########################################
 
+data_types = ['HgChem','Met']
 
+SSAloss_dict_x = {}
 
+for y in years:
+    
+    for t in perturbation_types:
+            
+            # Build the key dynamically
+           
+            path_key_Hg2toSSA= f"{perturbation_type_map[t]}_{y}_{data_types[0]}"
+            # print(path_key_Hg2toSSA)
+            path_key_Met= f"{perturbation_type_map[t]}_{y}_{data_types[1]}"
+            # print(path_key_Met)
+        
+            # Hg2GasToSSA is in molecules/cm3*s, must be converted in ug/m2*year
+        
+            dataset_Hg2toSSA = datasets_by_year[path_key_Hg2toSSA]['Hg2GasToSSA']
+            dataset_met1 = datasets_by_year[path_key_Met]['Met_AIRVOL']
+            dataset_met2 = datasets_by_year[path_key_Met]['AREA']
+            dataset = (( dataset_met1 * dataset_Hg2toSSA * conv ) / dataset_met2) # << Met_AIRVOL*AREA*Hg2GasToSSA*conv
 
-
-##########################################
-### 
-##########################################
-
+            result_key = f"{perturbation_type_map[t]}_{y}"
+            # Save the dataset in the main dictionary only if it's valid
+            if dataset is not None:
+                SSAloss_dict_x[result_key] = dataset
 
 
 
