@@ -1127,6 +1127,662 @@ for y in years:
             if dataset is not None:
                 SSAloss_dict_x[result_key] = dataset
 
+# Access the dataset for a specific run
+sample_dataset = SSAloss_dict_x['NP_2018']
+
+# Then, you would typically look at its dimensions/coordinates
+# If it's an xarray object:
+print(sample_dataset.coords)
+print(sample_dataset.dims)
+print(sample_dataset['lat'].values)
+
+import xarray as xr
+import pandas as pd # pandas is often imported for xarray operations
+
+# --- Assumed Input Variables ---
+# SSAloss_dict_x: Your dictionary containing DataArrays, e.g., {'NP_2018': <DataArray>, 'OL_2018': <DataArray>, ...}
+# perturbation_types: The unique prefixes (scenarios) deduced from your keys.
+perturbation_types = ['NP', 'OL', 'OM', 'SSAC', 'SSA0', 'WL', 'WM', 'OX']
+# -------------------------------
+
+# Dictionary to store the final 5-year averages for each scenario
+SSAloss_5year_avg = {}
+
+for p_type in perturbation_types:
+    # 1. Gather keys for the current perturbation type across all years
+    keys_for_p_type = [k for k in SSAloss_dict_x.keys() if k.startswith(p_type)]
+    
+    # 2. Extract DataArrays and Concatenate along the 'time' dimension
+    datasets_to_combine = [SSAloss_dict_x[k] for k in keys_for_p_type]
+    
+    
+    # This creates a single DataArray (e.g., 60 months for 5 years)
+    combined_dataset = xr.concat(datasets_to_combine, dim='time')
+    
+    # 3. Calculate Time-Weighted Average (Correct for month length)
+
+    # 3a. Get the length of each month (e.g., 31, 28, 31, ...)
+    # xarray's .dt accessor pulls this from the 'time' coordinate
+    month_length = combined_dataset.time.dt.days_in_month
+
+    # 3b. Normalize the month lengths to create weights that sum to 1
+    # We use .where() to avoid weights for any months that might be missing (NaN)
+    weights = month_length.where(~combined_dataset.isnull())
+    weights /= weights.sum(dim='time')
+    
+    # 3c. Apply the weights and sum along the 'time' dimension
+    # (Data * Weights) summed is mathematically equivalent to the weighted mean.
+    five_year_avg = (combined_dataset * weights).sum(dim='time')
+    
+    # 4. Store the result with the perturbation type as the key
+    SSAloss_5year_avg[p_type] = five_year_avg
+
+print("Calculation Complete. SSAloss_5year_avg now holds the 5-year weighted average for each scenario.")
+# Example of how to inspect a result:
+# print(SSAloss_5year_avg['NP'])
+
+import xarray as xr
+import pandas as pd
+import numpy as np
+
+# --- ASSUMED INPUT VARIABLES ---
+# SSAloss_dict_x: Your dictionary containing DataArrays, e.g., 
+# {'NP_2018': <DataArray>, 'OL_2018': <DataArray>, ...}
+# Each DataArray is assumed to have a 'time' dimension.
+# -------------------------------
+
+# The unique prefixes (scenarios)
+perturbation_types = ['NP', 'OL', 'OM', 'SSAC', 'SSA0', 'WL', 'WM', 'OX']
+
+# Dictionary to store the final 12-month climatology for each scenario
+SSAloss_monthly_climatology = {}
+
+print("Starting calculation of 5-year monthly climatology...")
+
+for p_type in perturbation_types:
+    # 1. Gather keys for the current perturbation type across all years
+    keys_for_p_type = [k for k in SSAloss_dict_x.keys() if k.startswith(p_type)]
+    
+    # 2. Extract DataArrays and Concatenate along the 'time' dimension
+    datasets_to_combine = [SSAloss_dict_x[k] for k in keys_for_p_type]
+    
+    # This creates a single, long DataArray (e.g., 60 months for 5 years)
+    combined_dataset = xr.concat(datasets_to_combine, dim='time')
+    
+    # 3. Calculate the Climatological Monthly Average
+    
+    # We use .groupby('time.month') to group all 60 time points into 12 groups (Jan, Feb, ..., Dec).
+    # Then we use .mean() to average the data within those 5 instances of each month.
+    # The result has a new dimension called 'month' (size 12).
+    monthly_climatology = combined_dataset.groupby('time.month').mean(dim='time')
+    
+    # 4. Store the result
+    SSAloss_monthly_climatology[p_type] = monthly_climatology
+    print(f"Climatology calculated for scenario: {p_type}")
+
+print("\nCalculation Complete.")
+print("SSAloss_monthly_climatology now holds the 8 DataArrays needed for time series plotting.")
+# Example of how to inspect the dimensions of a result:
+# print(SSAloss_monthly_climatology['NP'])
+
+# --- MOCKUP FOR DEMONSTRATION PURPOSES ---
+# If your SSAloss_dict_x is not defined, this block runs a small example
+if 'SSAloss_dict_x' not in globals():
+    print("\n--- Running Mockup Example ---")
+    
+    # Create mock time coordinates for 5 years (60 months)
+    time_coords = pd.date_range('2018-01-15', periods=60, freq='M')
+    
+    # Mock spatial coordinates
+    mock_lev = np.array([1000, 500])
+    mock_lat = np.array([45, 55])
+    mock_lon = np.array([0, 10])
+    
+    # Create a simple, synthetic SSA loss value that varies seasonally
+    seasonal_data = np.sin(np.linspace(0, 2*np.pi * 5, 60))[:, np.newaxis, np.newaxis, np.newaxis]
+    mock_data = (seasonal_data + 1) * 1e-4
+    
+    # Create mock dictionary structure
+    mock_dict = {}
+    for year in range(2018, 2023):
+        start_idx = (year - 2018) * 12
+        end_idx = start_idx + 12
+        
+        # Mock DataArray for a single year (e.g., 'NP_2018')
+        mock_da = xr.DataArray(
+            mock_data[start_idx:end_idx, :, :, :].squeeze(), # squeeze removes the unnecessary dimension
+            coords={
+                'time': time_coords[start_idx:end_idx],
+                'lev': mock_lev, 
+                'lat': mock_lat, 
+                'lon': mock_lon
+            },
+            dims=['time', 'lev', 'lat', 'lon'],
+            name='SSAloss'
+        )
+        mock_dict[f'NP_{year}'] = mock_da
+    
+    # Run the calculation with mock data
+    SSAloss_dict_x = mock_dict
+    
+    # Re-run the core logic to calculate climatology on the mock data
+    mock_climatology = {}
+    
+    # Simplified loop for mock example
+    datasets_to_combine = [SSAloss_dict_x[k] for k in SSAloss_dict_x.keys()]
+    combined_dataset = xr.concat(datasets_to_combine, dim='time')
+    mock_climatology['NP'] = combined_dataset.groupby('time.month').mean(dim='time')
+    
+    print("\n--- Mock Climatology Result (NP) ---")
+    print(mock_climatology['NP'])
+    print("Dimensions:", mock_climatology['NP'].dims) # Should show ('month', 'lev', 'lat', 'lon')
+
+
+# Access the dataset for a specific run
+sample_dataset = SSAloss_5year_avg['OX']
+
+# Then, you would typically look at its dimensions/coordinates
+# If it's an xarray object:
+print(sample_dataset.coords)
+print(sample_dataset.dims)
+print(sample_dataset['lat'].values)
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import numpy as np
+
+# --- NOTE TO USER: SETUP ASSUMPTION ---
+# This code assumes you have already defined the 'SSAloss_5year_avg' 
+# dictionary in your Python session, containing the 5-year averages 
+# for each scenario, including 'NP'.
+# -------------------------------------
+
+def plot_ssa_loss_map(ssa_loss_dict, case_name='NP', dim_to_sum='lev', title_suffix="5-Year Average (2018-2022)"):
+    """
+    Generates a global map for a specified case, calculated as the SUM (Total) 
+    across the vertical dimension.
+    
+    Args:
+        ssa_loss_dict (dict): Dictionary containing 3D xarray DataArrays (lev, lat, lon).
+        case_name (str): The key in the dictionary to plot (e.g., 'NP').
+        dim_to_sum (str): The dimension to sum over to get a 2D map (e.g., 'lev').
+        title_suffix (str): Text to append to the plot title.
+    """
+    
+    if case_name not in ssa_loss_dict:
+        print(f"Error: Case '{case_name}' not found in the dictionary.")
+        return
+
+    # 1. Select the 3D data (lev, lat, lon)
+    data_3d = ssa_loss_dict[case_name]
+    
+    # 2. Calculate the SUM across the vertical dimension ('lev') to get a 2D map (lat, lon)
+    # The result represents the TOTAL integrated SSA loss throughout the entire atmospheric column.
+    data_2d = data_3d.sum(dim=dim_to_sum) # CHANGED FROM .mean() TO .sum()
+
+    # Determine plot properties
+    plot_title = f"{case_name} Sea Salt Uptake - Column Total (Summed Over Level) {title_suffix}"
+    
+    # Set up the figure and the GeoAxes
+    fig = plt.figure(figsize=(12, 8))
+    
+    # Define the projection for the map display
+    # PlateCarree is a simple, rectangular global map projection
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    
+    # Add map features for context
+    ax.coastlines(resolution='50m', color='gray')
+    ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    
+    # 3. Plot the data using xarray's built-in plotting method (pcolormesh)
+    # The 'transform' argument tells cartopy what projection the data coordinates are in.
+    # The data is already in standard lat/lon, so we use ccrs.PlateCarree().
+    plot = data_2d.plot.pcolormesh(
+        ax=ax,
+        transform=ccrs.PlateCarree(),
+        cmap='viridis',  # You can choose any matplotlib colormap
+        cbar_kwargs={
+            'label': 'ug/m2*year', # Updated label
+            'shrink': 0.8
+        },
+        extend='both', # Extend the colorbar for values outside the normal range
+        # You might need to adjust vmin/vmax based on your actual data range
+        # vmin=1e-5,
+        # vmax=1e-3, 
+        
+    )
+
+    ax.set_title(plot_title)
+    
+    # Optional: Set the extent of the map (full globe)
+    ax.set_global() 
+    
+    plt.show()
+
+# --- Placeholder for the execution call ---
+# You need to run this function with your actual dictionary.
+# Since I cannot access your environment, I will show the call here.
+# Assuming SSAloss_5year_avg exists:
+# plot_ssa_loss_map(SSAloss_5year_avg, case_name='NP')
+
+# --- MOCKUP DATA FOR RUNNABILITY (Replace with your actual execution) ---
+# Since this code must be runnable, I will generate mock data that matches your structure
+# If you run this file directly, it will use the mock data.
+if 'SSAloss_5year_avg' not in globals():
+    print("\n--- Generating MOCK Data for Demo ---")
+    
+    # Create mock coordinates
+    mock_lev = np.linspace(0, 1, 10)
+    mock_lat = np.arange(-89, 90, 4)
+    mock_lon = np.arange(-180, 180, 5)
+    
+    # Create mock data array (3D: lev, lat, lon)
+    # This mock data is designed to show a higher loss in the Arctic (high lat)
+    lon_grid, lat_grid = np.meshgrid(mock_lon, mock_lat)
+    mock_values = (1 + np.sin(np.deg2rad(lat_grid) * 3)) * np.cos(np.deg2rad(lon_grid) / 5)
+    
+    # Add a level dimension to the mock data and scale it
+    mock_data = mock_values[np.newaxis, :, :] * np.exp(-mock_lev[:, np.newaxis, np.newaxis] * 2) * 1e-4
+    
+    # Create the mock DataArray
+    mock_da = xr.DataArray(
+        mock_data,
+        coords={'lev': mock_lev, 'lat': mock_lat, 'lon': mock_lon},
+        dims=['lev', 'lat', 'lon'],
+        name='SSAloss'
+    )
+    
+    # Create the mock SSAloss_5year_avg dictionary
+    mock_SSAloss_5year_avg = {'NP': mock_da}
+    
+    # Execute the plotting function with the mock data
+    plot_ssa_loss_map(mock_SSAloss_5year_avg, case_name='NP')
+else:
+    # Execute the plotting function with the real data
+    plot_ssa_loss_map(SSAloss_5year_avg, case_name='OX')
+
+##### Other plot 
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import numpy as np
+import calendar
+
+def plot_climatological_timeseries(climatology_dict, case_name='NP', plot_title="Climatological SSA Loss Cycle (Global Mean, Column Summed)"):
+    """
+    Plots the 12-month climatological cycle for a specified scenario.
+    
+    The data is spatially averaged (lat/lon) and summed vertically (lev) 
+    to represent the total global atmospheric impact over the year.
+    
+    Args:
+        climatology_dict (dict): Dictionary containing the 4D monthly climatology DataArrays.
+        case_name (str): The key in the dictionary to plot (e.g., 'NP').
+        plot_title (str): The title for the resulting plot.
+    """
+    
+    if case_name not in climatology_dict:
+        print(f"Error: Case '{case_name}' not found in the climatology dictionary.")
+        return
+
+    # 1. Select the 4D climatology data (month, lev, lat, lon)
+    data_4d = climatology_dict[case_name]
+    
+    # 2. Reduce the data to a 1D time series (size 12)
+    # a. Sum across the vertical dimension ('lev') to get the Column Total.
+    data_column_sum = data_4d.sum(dim='lev')
+    
+    # b. Calculate the Global Mean (mean across 'lat' and 'lon').
+    # The final result is a 1D array indexed by 'month'.
+    time_series_data = data_column_sum.mean(dim=['lat', 'lon'])
+    
+    # 3. Prepare plot coordinates
+    months = time_series_data['month'].values
+    month_names = [calendar.month_abbr[m] for m in months]
+    
+    # 4. Create the plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot the time series
+    ax.plot(months, time_series_data.values, marker='o', linestyle='-', color='indigo', linewidth=2)
+    
+    # Set X-axis to display month names
+    ax.set_xticks(months)
+    ax.set_xticklabels(month_names)
+    
+    # Labeling and Titling
+    ax.set_title(f"{case_name} {plot_title}", fontsize=14)
+    ax.set_xlabel("Month of the Year", fontsize=12)
+    ax.set_ylabel("Total Global SSA Loss (Column Summed)", fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Improve aesthetics
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- MOCKUP DATA FOR RUNNABILITY (Replace with your actual execution) ---
+# If your SSAloss_monthly_climatology is not defined, this block runs a small example
+if 'SSAloss_monthly_climatology' not in globals():
+    print("\n--- Running Mockup Example for Plotting ---")
+    
+    # Create mock 4D climatology data (12 months, 2 lev, 2 lat, 2 lon)
+    mock_months = np.arange(1, 13)
+    mock_lev = np.array([1000, 500])
+    mock_lat = np.array([45, 55])
+    mock_lon = np.array([0, 10])
+    
+    # Create synthetic seasonal data (peaks in summer, dips in winter)
+    seasonal_data = (np.cos(np.linspace(0, 2 * np.pi, 12) + np.pi/2) * 0.5 + 1.5) * 1e-4
+    
+    # Expand data to 4D structure
+    mock_4d_data = seasonal_data[:, np.newaxis, np.newaxis, np.newaxis] * np.ones((12, 2, 2, 2))
+    
+    mock_da = xr.DataArray(
+        mock_4d_data,
+        coords={'month': mock_months, 'lev': mock_lev, 'lat': mock_lat, 'lon': mock_lon},
+        dims=['month', 'lev', 'lat', 'lon'],
+        name='SSAloss'
+    )
+    
+    # Create the mock climatology dictionary
+    mock_climatology = {'NP': mock_da}
+    
+    # Execute the plotting function with the mock data
+    plot_climatological_timeseries(mock_climatology, case_name='NP')
+
+else:
+    # Execute the plotting function with the real data
+    plot_climatological_timeseries(SSAloss_monthly_climatology, case_name='OX')
+
+
+##########################################
+### SEA SALT UPTAKE COMPARISON - GLOBAL 
+##########################################
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import numpy as np
+import calendar
+
+# --- NOTE TO USER: SETUP ASSUMPTION ---
+# This code assumes the 'SSAloss_monthly_climatology' dictionary has 
+# already been created using the 'calculate_climatology.py' script 
+# (4D DataArrays: month, lev, lat, lon).
+# -------------------------------------
+
+# Define all scenarios
+ALL_PERTURBATION_TYPES = ['NP', 'OL', 'OM', 'SSAC', 'SSA0', 'WL', 'WM', 'OX']
+
+
+
+def plot_climatological_timeseries_comparison(climatology_dict, plot_title="Sea Salt Uptake - Comparison (Global Mean (2018-2022), Column Summed)"):
+    """
+    Plots the 12-month climatological cycle for ALL specified scenarios 
+    on a single graph for comparison, using custom colors and linestyles.
+    
+    The data is spatially averaged (lat/lon) and summed vertically (lev) 
+    to represent the total global atmospheric impact over the year.
+    
+    Args:
+        climatology_dict (dict): Dictionary containing the 4D monthly climatology DataArrays.
+        plot_title (str): The title for the resulting plot.
+    """
+    
+    if not all(p in climatology_dict for p in ALL_PERTURBATION_TYPES):
+        missing = [p for p in ALL_PERTURBATION_TYPES if p not in climatology_dict]
+        print(f"Error: Missing cases in dictionary: {missing}. Cannot plot all series.")
+        return
+
+    # 1. Setup the plot
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    # Get month coordinates (same for all cases)
+    first_case = ALL_PERTURBATION_TYPES[0]
+    months = climatology_dict[first_case]['month'].values
+    
+    # Use the global 1-character month names as requested
+   # month_names = month_names
+
+    # 2. Loop through all perturbation types and plot the series
+    for p_type in ALL_PERTURBATION_TYPES:
+        data_4d = climatology_dict[p_type]
+        
+        # a. Sum across the vertical dimension ('lev') to get the Column Total.
+        data_column_sum = data_4d.sum(dim='lev')
+        
+        # b. Calculate the Global Mean (mean across 'lat' and 'lon').
+        time_series_data = data_column_sum.mean(dim=['lat', 'lon'])
+        
+        # c. Plot the series using custom colors, linestyles, and legend labels
+        ax.plot(
+            months, 
+            time_series_data.values, 
+            marker='o', 
+            linewidth=2,
+            color=colors.get(p_type, 'gray'),             # Use new colors dictionary
+            linestyle=linestyles.get(p_type, '-'),        # Use new linestyles dictionary
+            label=legend_map.get(p_type, p_type)          # Use new legend_map dictionary
+        )
+    
+    # 3. Final Plot Customization
+    
+    # Set X-axis to display 1-character month names
+    ax.set_xticks(months)
+    ax.set_xticklabels(month_names)
+    
+    # Labeling and Titling
+    ax.set_title(plot_title, fontsize=16, fontweight='bold')
+    ax.set_xlabel("Month of the Year", fontsize=12)
+    ax.set_ylabel("Total Global Sea Salt Uptake (ug/m2*year)", fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Add Legend to distinguish the lines
+    ax.legend(title="Scenario", frameon=True, shadow=True, loc='best')
+    
+    # Improve aesthetics
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- MOCKUP DATA FOR RUNNABILITY (Replace with your actual execution) ---
+# If your SSAloss_monthly_climatology is not defined, this block runs a small example
+if 'SSAloss_monthly_climatology' not in globals():
+    print("\n--- Running Mockup Example for Plotting All Series ---")
+    
+    # Create mock 4D climatology data (12 months, 2 lev, 2 lat, 2 lon)
+    mock_months = np.arange(1, 13)
+    mock_lev = np.array([1000, 500])
+    mock_lat = np.array([45, 55])
+    mock_lon = np.array([0, 10])
+    
+    # Create synthetic seasonal data (peaks in summer, dips in winter)
+    base_seasonal = (np.cos(np.linspace(0, 2 * np.pi, 12) + np.pi/2) * 0.5 + 1.5)
+    
+    # Create the mock climatology dictionary with varied scales
+    mock_climatology = {}
+    
+    for i, p_type in enumerate(ALL_PERTURBATION_TYPES):
+        # Scale each type slightly differently
+        scale = 1e-4 * (1 + i * 0.1) 
+        
+        # Expand data to 4D structure
+        mock_4d_data = (base_seasonal * scale)[:, np.newaxis, np.newaxis, np.newaxis] * np.ones((12, 2, 2, 2))
+        
+        mock_da = xr.DataArray(
+            mock_4d_data,
+            coords={'month': mock_months, 'lev': mock_lev, 'lat': mock_lat, 'lon': mock_lon},
+            dims=['month', 'lev', 'lat', 'lon'],
+            name='SSAloss'
+        )
+        mock_climatology[p_type] = mock_da
+    
+    # Execute the plotting function with the mock data
+    plot_climatological_timeseries_comparison(mock_climatology)
+
+else:
+    # Execute the plotting function with the real data
+    plot_climatological_timeseries_comparison(SSAloss_monthly_climatology)
+
+
+##########################################
+### SEA SALT UPTAKE COMPARISON - ISLAND 
+##########################################
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import numpy as np
+import calendar
+
+# --- GEOGRAPHIC FOCUS ---
+# Coordinates for Macquarie Island (as requested)
+TARGET_LAT = -54.5
+TARGET_LON = 158.95
+# ------------------------
+
+# --- NOTE TO USER: SETUP ASSUMPTION ---
+# This code assumes the 'SSAloss_monthly_climatology' dictionary has 
+# already been created using the 'calculate_climatology.py' script 
+# (4D DataArrays: month, lev, lat, lon).
+# -------------------------------------
+
+# Define all scenarios
+ALL_PERTURBATION_TYPES = ['NP', 'OL', 'OM', 'SSAC', 'SSA0', 'WL', 'WM', 'OX']
+
+
+def plot_climatological_timeseries_comparison(climatology_dict):
+    """
+    Plots the 12-month climatological cycle for ALL specified scenarios 
+    on a single graph, focused on the location defined by TARGET_LAT/LON.
+    
+    The data is summed vertically (lev) to represent the total atmospheric 
+    impact at the single selected grid point.
+    
+    Args:
+        climatology_dict (dict): Dictionary containing the 4D monthly climatology DataArrays.
+    """
+    
+    if not all(p in climatology_dict for p in ALL_PERTURBATION_TYPES):
+        missing = [p for p in ALL_PERTURBATION_TYPES if p not in climatology_dict]
+        print(f"Error: Missing cases in dictionary: {missing}. Cannot plot all series.")
+        return
+
+    # 1. Setup the plot
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    # Get month coordinates (same for all cases)
+    first_case = ALL_PERTURBATION_TYPES[0]
+    months = climatology_dict[first_case]['month'].values
+   # month_names = MONTH_ABBREVIATIONS
+    
+    plot_title = f"Sea Salt Uptake - Comparison at Lat: {TARGET_LAT}, Lon: {TARGET_LON}"
+
+    # 2. Loop through all perturbation types and plot the series
+    for p_type in ALL_PERTURBATION_TYPES:
+        data_4d = climatology_dict[p_type]
+        
+        # a. Select the single grid cell closest to the target coordinates
+        # Use method='nearest' to ensure we pick the closest grid point
+        data_point = data_4d.sel(
+            lat=TARGET_LAT, 
+            lon=TARGET_LON, 
+            method='nearest'
+        )
+        
+        # b. Sum across the vertical dimension ('lev') to get the Column Total at that point
+        # The result is a 1D array indexed by 'month'.
+        time_series_data = data_point.sum(dim='lev')
+        
+        # c. Plot the series using custom colors, linestyles, and legend labels
+        ax.plot(
+            months, 
+            time_series_data.values, 
+            marker='o', 
+            linewidth=2,
+            color=colors.get(p_type, 'gray'),             
+            linestyle=linestyles.get(p_type, '-'),        
+            label=legend_map.get(p_type, p_type)          
+        )
+    
+    # 3. Final Plot Customization
+    
+    # Set X-axis to display 1-character month names
+    ax.set_xticks(months)
+    ax.set_xticklabels(month_names)
+    
+    # Labeling and Titling
+    ax.set_title(plot_title, fontsize=16, fontweight='bold')
+    ax.set_xlabel("Month of the Year", fontsize=12)
+    ax.set_ylabel("Sea Salt Uptake (ug/m2*year)", fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Add Legend to distinguish the lines
+    ax.legend(title="Scenario", frameon=True, shadow=True, loc='best')
+    
+    # Improve aesthetics
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- MOCKUP DATA FOR RUNNABILITY (Replace with your actual execution) ---
+# If your SSAloss_monthly_climatology is not defined, this block runs a small example
+if 'SSAloss_monthly_climatology' not in globals():
+    print(f"\n--- Running Mockup Example Focused on Lat: {TARGET_LAT}, Lon: {TARGET_LON} ---")
+    
+    # Create mock 4D climatology data (12 months, 2 lev, 2 lat, 2 lon)
+    mock_months = np.arange(1, 13)
+    mock_lev = np.array([1000, 500])
+    
+    # Use coordinates near the target for the mock data
+    mock_lat = np.array([-54, -55])
+    mock_lon = np.array([158, 159])
+    
+    # Create synthetic seasonal data (peaks in Southern Hemisphere summer, Dec-Feb)
+    # Shifted cosine function to peak around month 1 (Jan)
+    base_seasonal = (np.cos(np.linspace(0, 2 * np.pi, 12) + 2.6) * 0.5 + 1.5)
+    
+    # Create the mock climatology dictionary with varied scales
+    mock_climatology = {}
+    
+    for i, p_type in enumerate(ALL_PERTURBATION_TYPES):
+        # Scale each type slightly differently
+        scale = 1e-4 * (1 + i * 0.1) 
+        
+        # Expand data to 4D structure
+        # Add a slight spatial gradient so the selection is meaningful
+        spatial_gradient = np.array([[[1.1, 1.0], [0.9, 0.8]]]) * scale
+        mock_4d_data = base_seasonal[:, np.newaxis, np.newaxis, np.newaxis] * spatial_gradient
+        
+        mock_da = xr.DataArray(
+            mock_4d_data,
+            coords={'month': mock_months, 'lev': mock_lev, 'lat': mock_lat, 'lon': mock_lon},
+            dims=['month', 'lev', 'lat', 'lon'],
+            name='SSAloss'
+        )
+        mock_climatology[p_type] = mock_da
+    
+    # Execute the plotting function with the mock data
+    plot_climatological_timeseries_comparison(mock_climatology)
+
+else:
+    # Execute the plotting function with the real data
+    plot_climatological_timeseries_comparison(SSAloss_monthly_climatology)
+
+
+
+
+##########################################
+### 
+##########################################
+
+
+##########################################
+### 
+##########################################
 
 
 
@@ -1137,12 +1793,23 @@ for y in years:
 
 
 
+##########################################
+### 
+##########################################
+
+
+
 
 ##########################################
 ### 
 ##########################################
 
 
+
+
+##########################################
+### 
+##########################################
 
 
 
