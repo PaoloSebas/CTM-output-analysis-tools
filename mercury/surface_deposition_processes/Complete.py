@@ -1773,46 +1773,820 @@ else:
     plot_climatological_timeseries_comparison(SSAloss_monthly_climatology)
 
 
+##################################################################  WET DEPOSITION ANALYSIS 
+
+# Liste per i tipi e i dati
+data_types_WD = ['WetLossLS', 'WetLossConv'] # Poiché questo blocco di codice si concentra solo su WetLoss
+datasets_by_year_WD = {}
+
+# Assumiamo che 'datasets_by_year_WD' sia il dizionario principale che usi
+# per archiviare tutti i tuoi dati.
+
+for y in years:
+    
+    for t in perturbation_types:
+        
+        for d in data_types_WD:
+            
+            # Costruisci la chiave in modo dinamico
+            path_key_WD = f"{perturbation_type_map[t]}_{y}_{data_type_map[d]}"
+
+            # Carica il dataset on-demand
+            dataset_WD = get_dataset(year=y, type_name=t, data_type=d)
+
+            # Salva il dataset nel dizionario principale solo se è valido
+            if dataset_WD is not None:
+                datasets_by_year_WD[path_key_WD] = dataset_WD
+
+
+print("\n--- LOADING COMPLETED ---")
+print(f"Loaded {len(datasets_by_year_WD)} datasets.")
+print("The dictionary keys are:")
+print(datasets_by_year_WD.keys())
+
+
+##########################################
+### CONVERTING UNITS
+##########################################
+
+#CONVERTING UNITS kg/s --> to µg m-2 year-1
+
+# Iterate through all the datasets in your dictionary
+for key, ds in datasets_by_year_WD.items():
+    # Retrieve the AREA variable as a DataArray.
+    # DO NOT use .values here.
+    area = ds['AREA']
+
+    # Define the variables to convert.
+    wetloss_vars = [var for var in ds.variables
+                    if var.startswith('WetLoss') and 'Frac' not in var]
+
+    # Apply the conversion to each variable
+    for var in wetloss_vars:
+        if 'units' in ds[var].attrs:
+            if ds[var].attrs['units'] == 'kg s-1':
+                # Apply the conversion. xarray will automatically align
+                # the 'area' DataArray with the 'var' DataArray.
+                # It will "broadcast" the 'area' variable across the missing
+                # 'time' and 'lev' dimensions.
+                ds[var] = ds[var] * ug_kg * s_in_yr / area
+
+                # Update the units attribute to reflect the new units
+                ds[var].attrs['units'] = 'µg m-2 year-1'
+
+# The datasets in 'datasets_by_year_WD' are now updated with the new units.
+
+
+# Assuming you have loaded your dataset
+# For example, using the 'NP_2018_WLConv' dataset from your example
+ds = datasets_by_year_WD['NP_2018_WLConv']
+
+# Access the 'units' attribute of a specific variable
+# Let's check the units for 'WetLossConv_HgCl2'
+units_of_variable = ds['WetLossConv_HgCl2'].attrs['units']
+
+# Print the units
+print(f"The units of the variable 'WetLossConv_HgCl2' are: {units_of_variable}")
+
+##########################################
+### 
+##########################################
+
+import xarray as xr
+
+# Define the variable name prefixes for wet deposition
+wet_loss_ls_prefix = 'WetLossLS_'
+wet_loss_conv_prefix = 'WetLossConv_'
+
+# Create a new dictionary to store the total wet deposition datasets summed all over the levels
+datasets_by_year_total_WD_all_lev = {}
+
+# Iterate through the years and simulation types
+
+for y in years:
+    
+    for t in perturbation_types:
+        
+        # Get the short key for the simulation type
+        t_key = perturbation_type_map[t]
+
+        # Construct the keys for the two individual wet loss datasets
+        key_wlls = f"{t_key}_{y}_{data_type_map['WetLossLS']}"
+        key_wlconv = f"{t_key}_{y}_{data_type_map['WetLossConv']}"
+
+        # Check if both datasets exist
+        if key_wlls in datasets_by_year_WD and key_wlconv in datasets_by_year_WD:
+            
+            # --- Sum WetLossLS Variables ---
+            ds_wlls = datasets_by_year_WD[key_wlls]
+            
+            # Identify all variables that are related to mercury wet deposition
+            # This is done by checking if the variable name contains 'Hg'
+            
+            wlls_variables_to_sum = [
+                var for var in ds_wlls.data_vars 
+                if var.startswith(wet_loss_ls_prefix) and 'Hg' in var
+            ]
+            
+            # Create a DataArray that is the sum of all relevant variables
+            total_wlls = ds_wlls[wlls_variables_to_sum].to_array(dim='species').sum(dim='species').sum(dim='lev')
+
+            # --- Sum WetLossConv Variables ---
+            ds_wlconv = datasets_by_year_WD[key_wlconv]
+            
+            # Identify and sum variables for convective deposition
+            wlconv_variables_to_sum = [
+                var for var in ds_wlconv.data_vars 
+                if var.startswith(wet_loss_conv_prefix) and 'Hg' in var
+            ]
+            
+            total_wlconv = ds_wlconv[wlconv_variables_to_sum].to_array(dim='species').sum(dim='species').sum(dim='lev')
+
+            # --- Calculate Total Wet Deposition (LS + Conv) ---
+            total_wet_dep = total_wlls + total_wlconv
+            
+            # Store the new combined dataset
+            new_key = f"{t_key}_{y}_TotalWD"
+            datasets_by_year_total_WD_all_lev[new_key] = total_wet_dep 
+            print(f"Combined data for {new_key}")
+            
+        else:
+            print(f"Warning: Missing data for keys {key_wlls} or {key_wlconv}. Skipping.")
+
+print("\n--- Summary of Total Wet Deposition Datasets ---")
+print(f"A total of {len(datasets_by_year_total_WD_all_lev)} datasets were created.")
+print(f"Example keys: {list(datasets_by_year_total_WD_all_lev.keys())[:5]}...")
+
+
+##########################################
+### MEANS
+##########################################
+
+# CALCOLO DELLE MEDIE
+print("\nMeans calcs ... ")
+
+# Calcolo delle medie a 5 anni
+mean_wet_dep_by_type = {}
+std_wet_dep_by_type = {}
+
+mean_wet_dep_by_type_m = {}
+std_wet_dep_by_type_m = {}
+
+for t in perturbation_types:
+    
+    t_key = perturbation_type_map[t]
+    
+    data_arrays_to_combine = []
+    
+    for y in years:
+        
+        key = f"{t_key}_{y}_TotalWD"
+        
+        if key in datasets_by_year_total_WD_all_lev:
+            
+            data_arrays_to_combine.append(datasets_by_year_total_WD_all_lev[key])
+
+    if data_arrays_to_combine:
+        
+        combined_data = xr.concat(data_arrays_to_combine, dim='time')
+        
+        # Calcola la media e forza il calcolo in memoria con .compute()
+        mean_data = combined_data.mean(dim='time', skipna=True).compute()   ### << annual
+        std_data = combined_data.std(dim='time', skipna=True).compute()   ### << std
+        
+        mean_wet_dep_by_type[t_key] = mean_data
+        std_wet_dep_by_type[t_key] = std_data
+
+        mean_data_m = combined_data.groupby('time.month').mean(dim='time', skipna=True)   ### << annual
+        std_data_m = combined_data.groupby('time.month').std(dim='time', skipna=True).compute()   ### << annual
+        
+        mean_wet_dep_by_type_m[t_key] = mean_data_m
+        std_wet_dep_by_type_m[t_key] = std_data_m
+
+        print(f"WD - Annual, and monthly mean with std calculations, for {t_key,} completed.")
+    else:
+        print(f"WD - Nessun dato trovato per {t_key}.")
+
+
+
+##########################################
+### WET DEPOSITION COMPARISON PLOT ISLAND
+##########################################
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import numpy as np
+import calendar
+
+# --- GEOGRAPHIC FOCUS ---
+# Coordinates for Macquarie Island (as requested)
+TARGET_LAT = -54.5
+TARGET_LON = 158.95
+# ------------------------
+
+# Define all scenarios
+ALL_PERTURBATION_TYPES = ['NP', 'OL', 'OM', 'SSAC', 'SSA0', 'WL', 'WM', 'OX']
+
+# 1-character month abbreviations for X-axis labels (as requested)
+MONTH_ABBREVIATIONS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+
+
+def plot_climatological_timeseries_comparison(climatology_dict):
+    """
+    Plots the 12-month climatological cycle for ALL specified scenarios 
+    on a single graph, focused on the location defined by TARGET_LAT/LON.
+    
+    The data is previousle summed vertically (lev) to represent the total atmospheric 
+    impact at the single selected grid point.
+    
+    Args:
+        climatology_dict (dict): Dictionary containing the 4D monthly climatology DataArrays.
+    """
+    
+    if not all(p in climatology_dict for p in ALL_PERTURBATION_TYPES):
+        missing = [p for p in ALL_PERTURBATION_TYPES if p not in climatology_dict]
+        print(f"Error: Missing cases in dictionary: {missing}. Cannot plot all series.")
+        return
+
+    # 1. Setup the plot
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    # Get month coordinates (same for all cases)
+    first_case = ALL_PERTURBATION_TYPES[0]
+    months = climatology_dict[first_case]['month'].values
+    month_names = MONTH_ABBREVIATIONS
+    
+    plot_title = f"Wet deposition - Comparison at Lat: {TARGET_LAT}, Lon: {TARGET_LON}"
+
+    # 2. Loop through all perturbation types and plot the series
+    for p_type in ALL_PERTURBATION_TYPES:
+        data_3d = climatology_dict[p_type]
+        
+        # a. Select the single grid cell closest to the target coordinates
+        # Use method='nearest' to ensure we pick the closest grid point
+        data_point = data_3d.sel(
+            lat=TARGET_LAT, 
+            lon=TARGET_LON, 
+            method='nearest'
+        )
+        
+       
+        # The result is a 1D array indexed by 'month'.
+        time_series_data = data_point
+        
+        # c. Plot the series using custom colors, linestyles, and legend labels
+        ax.plot(
+            months, 
+            time_series_data.values, 
+            marker='o', 
+            linewidth=2,
+            color=colors.get(p_type, 'gray'),             
+            linestyle=linestyles.get(p_type, '-'),        
+            label=legend_map.get(p_type, p_type)          
+        )
+    
+    # 3. Final Plot Customization
+    
+    # Set X-axis to display 1-character month names
+    ax.set_xticks(months)
+    ax.set_xticklabels(month_names)
+    
+    # Labeling and Titling
+    ax.set_title(plot_title, fontsize=16, fontweight='bold')
+    ax.set_xlabel("Month of the Year", fontsize=12)
+    ax.set_ylabel("Wet deposition (ug/m2*year)", fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Add Legend to distinguish the lines
+    ax.legend(title="Scenario", frameon=True, shadow=True, loc='best')
+    
+    # Improve aesthetics
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+
+# --- MOCKUP DATA FOR RUNNABILITY (Replace with your actual execution) ---
+# If your SSAloss_monthly_climatology is not defined, this block runs a small example
+if 'SSAloss_monthly_climatology' not in globals():
+    print(f"\n--- Running Mockup Example Focused on Lat: {TARGET_LAT}, Lon: {TARGET_LON} ---")
+    
+    # Create mock 4D climatology data (12 months, 2 lev, 2 lat, 2 lon)
+    mock_months = np.arange(1, 13)
+    mock_lev = np.array([1000, 500])
+    
+    # Use coordinates near the target for the mock data
+    mock_lat = np.array([-54, -55])
+    mock_lon = np.array([158, 159])
+    
+    # Create synthetic seasonal data (peaks in Southern Hemisphere summer, Dec-Feb)
+    # Shifted cosine function to peak around month 1 (Jan)
+    base_seasonal = (np.cos(np.linspace(0, 2 * np.pi, 12) + 2.6) * 0.5 + 1.5)
+    
+    # Create the mock climatology dictionary with varied scales
+    mock_climatology = {}
+    
+    for i, p_type in enumerate(ALL_PERTURBATION_TYPES):
+        # Scale each type slightly differently
+        scale = 1e-4 * (1 + i * 0.1) 
+        
+        # Expand data to 4D structure
+        # Add a slight spatial gradient so the selection is meaningful
+        spatial_gradient = np.array([[[1.1, 1.0], [0.9, 0.8]]]) * scale
+        mock_4d_data = base_seasonal[:, np.newaxis, np.newaxis, np.newaxis] * spatial_gradient
+        
+        mock_da = xr.DataArray(
+            mock_4d_data,
+            coords={'month': mock_months, 'lev': mock_lev, 'lat': mock_lat, 'lon': mock_lon},
+            dims=['month', 'lev', 'lat', 'lon'],
+            name='SSAloss'
+        )
+        mock_climatology[p_type] = mock_da
+    
+    # Execute the plotting function with the mock data
+    plot_climatological_timeseries_comparison(mock_climatology)
+
+else:
+    # Execute the plotting function with the real data
+    plot_climatological_timeseries_comparison(mean_wet_dep_by_type_m)
+
+
+
+##########################################
+### MAP WET DEP
+##########################################
+
+import xarray as xr
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import numpy as np
+
+def plot_wetdep_map(wetdep_dict, case_name='NP', dim_to_sum='lev', title_suffix="5-Year Average (2018-2022)"):
+    """
+    Generates a global map for a specified case, calculated as the SUM (Total) 
+    across the vertical dimension.
+    
+    Args:
+        ssa_loss_dict (dict): Dictionary containing 3D xarray DataArrays (lev, lat, lon).
+        case_name (str): The key in the dictionary to plot (e.g., 'NP').
+        dim_to_sum (str): The dimension to sum over to get a 2D map (e.g., 'lev').
+        title_suffix (str): Text to append to the plot title.
+    """
+    
+    if case_name not in wetdep_dict:
+        print(f"Error: Case '{case_name}' not found in the dictionary.")
+        return
+
+    # 1. Select the 3D data (lev, lat, lon)
+    data_3d = wetdep_dict[case_name]
+    
+    # 2. Calculate the SUM across the vertical dimension ('lev') to get a 2D map (lat, lon)
+    # The result represents the TOTAL integrated SSA loss throughout the entire atmospheric column.
+    data_2d = data_3d  # <<< modified
+
+    # Determine plot properties
+    plot_title = f"{case_name} Wet Dep - Column Total (Summed Over Level) {title_suffix}"
+    
+    # Set up the figure and the GeoAxes
+    fig = plt.figure(figsize=(12, 8))
+    
+    # Define the projection for the map display
+    # PlateCarree is a simple, rectangular global map projection
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    
+    # Add map features for context
+    ax.coastlines(resolution='50m', color='gray')
+    ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    
+    # 3. Plot the data using xarray's built-in plotting method (pcolormesh)
+    # The 'transform' argument tells cartopy what projection the data coordinates are in.
+    # The data is already in standard lat/lon, so we use ccrs.PlateCarree().
+    plot = data_2d.plot.pcolormesh(
+        ax=ax,
+        transform=ccrs.PlateCarree(),
+        cmap='viridis',  # You can choose any matplotlib colormap
+        cbar_kwargs={
+            'label': 'ug/m2*year', # Updated label
+            'shrink': 0.8
+        },
+        extend='both', # Extend the colorbar for values outside the normal range
+        # You might need to adjust vmin/vmax based on your actual data range
+        # vmin=1e-5,
+        # vmax=1e-3, 
+        
+    )
+
+    ax.set_title(plot_title)
+    
+    # Optional: Set the extent of the map (full globe)
+    ax.set_global() 
+    
+    plt.show()
+
+# --- Placeholder for the execution call ---
+# You need to run this function with your actual dictionary.
+# Since I cannot access your environment, I will show the call here.
+# Assuming SSAloss_5year_avg exists:
+# plot_ssa_loss_map(SSAloss_5year_avg, case_name='NP')
+
+# --- MOCKUP DATA FOR RUNNABILITY (Replace with your actual execution) ---
+# Since this code must be runnable, I will generate mock data that matches your structure
+# If you run this file directly, it will use the mock data.
+if 'SSAloss_5year_avg' not in globals():
+    print("\n--- Generating MOCK Data for Demo ---")
+    
+    # Create mock coordinates
+    mock_lev = np.linspace(0, 1, 10)
+    mock_lat = np.arange(-89, 90, 4)
+    mock_lon = np.arange(-180, 180, 5)
+    
+    # Create mock data array (3D: lev, lat, lon)
+    # This mock data is designed to show a higher loss in the Arctic (high lat)
+    lon_grid, lat_grid = np.meshgrid(mock_lon, mock_lat)
+    mock_values = (1 + np.sin(np.deg2rad(lat_grid) * 3)) * np.cos(np.deg2rad(lon_grid) / 5)
+    
+    # Add a level dimension to the mock data and scale it
+    mock_data = mock_values[np.newaxis, :, :] * np.exp(-mock_lev[:, np.newaxis, np.newaxis] * 2) * 1e-4
+    
+    # Create the mock DataArray
+    mock_da = xr.DataArray(
+        mock_data,
+        coords={'lev': mock_lev, 'lat': mock_lat, 'lon': mock_lon},
+        dims=['lev', 'lat', 'lon'],
+        name='SSAloss'
+    )
+    
+    # Create the mock SSAloss_5year_avg dictionary
+    mock_SSAloss_5year_avg = {'NP': mock_da}
+    
+    # Execute the plotting function with the mock data
+    plot_ssa_loss_map(mock_SSAloss_5year_avg, case_name='NP')
+else:
+    # Execute the plotting function with the real data
+    plot_wetdep_map(mean_wet_dep_by_type, case_name='NP')
+
+
 
 
 ##########################################
 ### 
 ##########################################
 
+# Lista dei dizionari che vuoi confrontare
+dict_list = [
+    monthly_means_by_type_DD_micro_Hg0,
+    monthly_means_by_type_DD_micro_Hg2,
+    monthly_means_by_type_DD_micro_HgP,
+    mean_wet_dep_by_type_m,
+    SSAloss_monthly_climatology
+]
+
+# Lista dei nomi usati per i report
+dict_names = [
+    'DD_Hg0',
+    'DD_Hg2',
+    'DD_HgP',
+    'WD_Total',
+    'SSA_dep'
+]
+
+# 1. Estrarre i set di chiavi
+key_sets = [set(d.keys()) for d in dict_list]
+
+# 2. Calcolare l'Intersezione (Chiavi Comuni)
+# Queste sono le chiavi utilizzabili per il plotting di tutte le componenti
+common_keys = set.intersection(*key_sets)
+print("=" * 60)
+print(f"1. Chiavi COMUNI a TUTTI e 5 i dizionari ({len(common_keys)}):")
+print("-" * 60)
+print(sorted(list(common_keys)))
+
+# 3. Confronto Dettagliato (Chiavi Mancanti)
+print("\n" + "=" * 60)
+print("2. Confronto dettagliato (Chiavi mancanti per dizionario):")
+print("-" * 60)
+
+# Confronta ogni dizionario con il set di chiavi comuni
+for name, current_keys in zip(dict_names, key_sets):
+    
+    # Calcola la differenza simmetrica: le chiavi che mancano o sono in eccesso
+    # Differenza: Chiavi nel set corrente MA NON nelle chiavi comuni
+    missing_in_common = current_keys.difference(common_keys)
+    
+    if len(missing_in_common) > 0:
+        # Se ci sono chiavi aggiuntive in un dizionario, potrebbero non essere presenti altrove.
+        print(f"[{name}] ha {len(missing_in_common)} chiavi che NON sono COMUNI a tutti:")
+        print(f"   {sorted(list(missing_in_common))}")
+    else:
+        print(f"[{name}] ha esattamente le stesse chiavi COMUNI a tutti.")
+        
+# 4. Unione (Tutte le chiavi possibili)
+all_keys = set.union(*key_sets)
+print("\n" + "=" * 60)
+print(f"3. Chiavi TOTALI uniche presenti in almeno un dizionario ({len(all_keys)}):")
+print("-" * 60)
+# print(sorted(list(all_keys)))
+
+# 1. Seleziona il primo dizionario
+sample_dict = monthly_means_by_type_DD_micro_Hg0 
+
+# 2. Seleziona la prima chiave (perturbazione)
+sample_key = list(sample_dict.keys())[0] # Es. 'NP'
+
+# 3. Estrai il DataArray
+da_sample = sample_dict[sample_key]
+
+# Stampa l'oggetto per vedere la sua struttura
+print("--- Oggetto DataArray Campione ---")
+print(da_sample)
+
+
 
 ##########################################
 ### 
 ##########################################
+# --- Variabili Fisse ---
+target_lat = -54.5
+target_lon = 158.95
+TIME_DIM_NAME = 'month' 
+
+list_of_data_dicts = [
+    monthly_means_by_type_DD_micro_Hg0_I,
+    monthly_means_by_type_DD_micro_Hg2_I,
+    monthly_means_by_type_DD_micro_HgP_I,
+    mean_wet_dep_by_type_m,
+    SSAloss_monthly_climatology
+]
+
+series_labels = ['DD_Hg0_I', 'DD_Hg2_I', 'DD_HgP_I', 'WD_Total', 'SSA_dep']
+all_keys = list(monthly_means_by_type_DD_micro_Hg0_I.keys()) # Utilizziamo le 7 chiavi comuni
+
+print("--- Analisi della Forma dei DataArray Dopo la Selezione Geografica ---")
+print("-" * 70)
+
+for label, data_dict in zip(series_labels, list_of_data_dicts):
+    
+    # Prendiamo la prima chiave comune ('NP') per l'analisi campione
+    sample_key = all_keys[0] 
+    
+    da = data_dict[sample_key]
+    
+    # 1. Seleziona il punto geografico (riduce lat e lon)
+    point_series = da.sel(
+        lat=target_lat, 
+        lon=target_lon, 
+        method='nearest'
+    )
+    
+    # 2. Stampa la forma e le dimensioni risultanti
+    print(f"[{label}] (Shape / Dimensioni residue):")
+    print(f"   Shape originale (dopo .sel): {point_series.shape}")
+    print(f"   Dimensioni residue: {list(point_series.dims)}")
+    
+    # 3. Prova a usare .squeeze() per vedere cosa succede
+    squeezed_array = point_series.squeeze()
+    print(f"   Shape dopo .squeeze():      {squeezed_array.shape}")
+    print("-" * 70)
 
 
 
-##########################################
-### 
-##########################################
+import pandas as pd
+import matplotlib.pyplot as plt
+import xarray as xr
+import warnings
+import numpy as np 
+from matplotlib.lines import Line2D # Necessario per la Legenda custom
+
+# Ignora il RuntimeWarning generato da Pandas/NumPy
+warnings.filterwarnings(
+    "ignore", 
+    message=".*unsupported between instances of 'tuple' and 'int'", 
+    category=RuntimeWarning
+)
+
+# --- Variabili Fisse ---
+target_lat = -54.5
+target_lon = 158.95
+TIME_DIM_NAME = 'month' # Nome della dimensione temporale confermato
+
+# ATTENZIONE: Questi oggetti devono essere definiti o caricati nel tuo ambiente
+list_of_data_dicts = [
+    monthly_means_by_type_DD_micro_Hg0_I,
+    monthly_means_by_type_DD_micro_Hg2_I,
+    monthly_means_by_type_DD_micro_HgP_I,
+    mean_wet_dep_by_type_m,
+    SSAloss_monthly_climatology
+]
+
+series_labels = ['DD_Hg0_I', 'DD_Hg2_I', 'DD_HgP_I', 'WD_Total', 'SSA_dep']
+
+# all_keys è la lista delle chiavi di perturbazione (le 7 comuni: NP, OL, OM, SSA0, SSAC, WL, WM)
+all_keys = list(monthly_means_by_type_DD_micro_Hg0_I.keys()) 
+N_keys = len(all_keys)
+
+# Dizionario per contenere i DataFrame pronti per il plot
+df_by_key = {}
+
+# =======================================================================
+# --- 1. Ciclo principale: Estrazione, Aggregazione e Calcolo del Totale ---
+# =======================================================================
+
+for key in all_keys:
+    
+    monthly_data_series = {}
+    
+    for data_dict, label in zip(list_of_data_dicts, series_labels):
+        
+        if key in data_dict:
+            
+            da = data_dict[key]
+            
+            # 1. Seleziona il punto geografico più vicino
+            point_series = da.sel(
+                lat=target_lat, 
+                lon=target_lon, 
+                method='nearest'
+            )
+            
+            # --- FIX: SOMMA SULLA DIMENSIONE 'lev' per SSA_dep ---
+            if label == 'SSA_dep':
+                # Aggrega la dimensione 'lev' sommandone i valori (risolve il ValueError 1D)
+                point_series = point_series.sum(dim='lev')
+            
+            # 2. Usa .squeeze() per eliminare eventuali dimensioni lat/lon residue (lunghezza 1)
+            squeezed_array = point_series.squeeze() 
+            
+            # 3. Estrai i valori (ora garantiti per essere 1D)
+            values = squeezed_array.values
+            
+            # 4. Estrai l'indice del mese
+            month_index_values = squeezed_array[TIME_DIM_NAME].values
+            
+            # 5. Crea una Serie pulita (risolve gli errori di indicizzazione)
+            monthly_data_series[label] = pd.Series(
+                data=values, 
+                index=month_index_values
+            )
+            
+    # Crea il DataFrame unendo le Serie pulite
+    df_by_key[key] = pd.DataFrame(monthly_data_series)
+    df_by_key[key].index.name = "Month"
+    
+    # Calcola la colonna TOTAL_DEPOSITION
+    df_by_key[key]['TOTAL_DEPOSITION'] = df_by_key[key][series_labels].sum(axis=1)
 
 
+# >>> CREAZIONE del DataFrame di Riepilogo per l'ottavo plot
+summary_data = {
+    key: df_by_key[key]['TOTAL_DEPOSITION'] for key in all_keys
+}
+df_summary = pd.DataFrame(summary_data)
+df_summary.index.name = "Month"
 
 
-##########################################
-### 
-##########################################
+# =======================================================================
+# --- 2. Definizione della Griglia e Figure ---
+# =======================================================================
+
+ncols = 3
+nrows = 3 # 7 plot di dati + 1 plot di riepilogo (totale 8 posti)
+
+fig, axes = plt.subplots(
+    nrows=nrows, 
+    ncols=ncols, 
+    figsize=(15, 5 * nrows),
+    sharex=True, 
+    sharey=True
+)
+
+axes = axes.flatten()
+
+fig.suptitle(
+    f"Monthly Total Deposition (Dry_I + Wet + SSA) @ Macquarie Island\n Comparison of Perturbations (Lat: {target_lat}, Lon: {target_lon})", 
+    fontsize=16, 
+    y=1.02
+)
+
+# >>> AGGIUNTA QUI: GLOSSARIO DELLE PERTURBAZIONI
+glossary_text = (
+    "NP: No perturbation | OM: Ocean More | OL: Ocean Less | "
+    "WM: Wind More | WL: Wind Less | SSA0: SSA Loss at Zero | SSAC: SSA Loss Constant | OX: Oxidants fields"
+)
+
+fig.text(
+    0.5, # Posizione X al centro
+    0.98, # Posizione Y (leggermente più in basso del suptitle)
+    glossary_text,
+    ha='center', # Allineamento orizzontale al centro
+    fontsize=10, 
+    color='gray' # Colore leggermente smorzato
+)
+
+# =======================================================================
+# --- 3. Ciclo di Plotting per Subplot Individuali  ---
+# =======================================================================
+
+for i, key in enumerate(all_keys):
+    ax = axes[i]
+    df_full = df_by_key[key]
+
+    df_area = df_full[series_labels]
+    df_line = df_full['TOTAL_DEPOSITION']
+
+    # A. Disegna l'Area Plot 
+    df_area.plot.area(
+        stacked=True, 
+        ax=ax,
+        legend=False, 
+        title=f"Perturbation key: {key}"
+    )
+
+    # B. Aggiungi il Totale come Linea (sovrapposto)
+    df_line.plot(
+        ax=ax, 
+        label='_nolegend_',
+        color='black', 
+        linestyle='-', 
+        linewidth=2.5,
+        zorder=10 
+    )
+    
+    # Personalizzazione
+    ax.set_xlabel("")
+    ax.grid(axis='y', linestyle='--', alpha=0.6)
+    
+    # Imposta etichette Y solo sulla prima colonna
+    if i % ncols == 0:
+        ax.set_ylabel("Hg Deposition (ug * m-2 * year-1)")
+    
+    # Rimuovi i tick X se non è l'ultima riga
+    if i < (nrows - 1) * ncols:
+        ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
+# =======================================================================
+# --- 4. Plotting e Configurazione del Riepilogo (axes[7]) ---
+# =======================================================================
+
+summary_ax = axes[N_keys] # Indice 7 (l'ottavo plot)
+
+# 1. PLOTTA LE PERTURBAZIONI (tutto tranne 'NP')
+df_summary_perturbs = df_summary.drop(columns=['NP'])
+df_summary_perturbs.plot(
+    ax=summary_ax,
+    legend=True, 
+    title="Total Deposition Comparison (All Perturbations)",
+    marker='o', 
+    linestyle='-'
+)
+
+# 2. PLOTTA NP SEPARATAMENTE (come linea di riferimento nera, spessa e in primo piano)
+df_summary['NP'].plot(
+    ax=summary_ax,
+    color='black',
+    linewidth=3.5, 
+    linestyle='-',
+    marker='s', # Marker diverso per riferimento
+    zorder=100, 
+    label='NP (Reference)' 
+)
 
 
-##########################################
-### 
-##########################################
+# 3. Impostazioni e Labels (risolve l'asse Y mancante)
+summary_ax.tick_params(axis='y', which='both', left=True, labelleft=True)
+summary_ax.set_ylabel("Hg Deposition (ug * m-2 * year-1)") 
+summary_ax.set_xlabel("Month") 
+summary_ax.grid(axis='y', linestyle='--', alpha=0.6)
+
+# 4. Crea la legenda del plot di riepilogo
+handles, labels = summary_ax.get_legend_handles_labels()
+summary_ax.legend(handles, labels, title='Perturbation', loc='lower right', ncol=1, fontsize='small') 
+
+# Mantiene i bordi visibili
+for spine in summary_ax.spines.values():
+    spine.set_visible(True)
 
 
+# =======================================================================
+# --- 5. Legenda Unica e Visualizzazione Finale ---
+# =======================================================================
 
+# Ottieni le handles dal primo subplot (per le componenti DD/WD/SSA)
+handles_area, labels_area = axes[0].get_legend_handles_labels()
 
-##########################################
-### 
-##########################################
+custom_lines = [h for h in handles_area if h.get_label() != '_nolegend_']
+custom_labels = series_labels
 
+# Aggiungi la linea nera per il Totale (Riferimento generale per il Totale)
+custom_lines.append(Line2D([0], [0], color='black', lw=2.5))
+custom_labels.append('Total Dep. Line') # Etichetta aggiornata per chiarezza
 
+fig.legend(custom_lines, custom_labels, 
+           loc='lower center', 
+           bbox_to_anchor=(0.5, -0.05), 
+           ncol=len(custom_labels),
+           title="Component Breakdown")
 
-##########################################
-### 
-##########################################
+plt.tight_layout(rect=[0, 0.05, 1, 1])
+fig.savefig('summary_ox.png', dpi=300, bbox_inches='tight')
+plt.show()
